@@ -19,6 +19,11 @@ First release (alpha).
 - Default-plane IDs are resolved at runtime via FeatureScript instead of being hard-coded.
 - `scripts/smoke_test.py` for verifying a build against a real Onshape account.
 - Generated tool reference (`docs/tools.md`), Dockerfile and `glama.json` for Glama.
+- Release automation: tag-triggered `release.yml` (verify, build, PyPI Trusted Publishing, GitHub
+  Release) and `scripts/release.py` (`check`, `notes`, `bump`, `build`, `verify`, `preflight`,
+  guarded `commit` / `tag` / `push` / `publish`).
+- VS Code tasks (`.vscode/tasks.json`) for the whole release flow; `Release 7: PUBLISH` asks for
+  confirmation (default No).
 
 ### Fixed during live verification
 - `whoami` no longer reports success for an anonymous session (Onshape returns `200 {}`).

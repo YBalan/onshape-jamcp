@@ -15,11 +15,15 @@ htmlcov/
 .env.*
 !.env.example
 
-# Per-machine Claude Code settings (permissions etc.); shared hooks live in .claude/settings.json
+# Local-only tooling, kept out of the repository
+.claude/settings.json
 .claude/settings.local.json
+.github/hooks/
+ai-helper-*.ps1
 
 # Local output (screenshots / exports) and editor files
 output/
 .idea/
-.vscode/
+.vscode/*
+!.vscode/tasks.json
 *.log

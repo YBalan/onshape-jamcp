@@ -129,11 +129,22 @@ uv run python scripts/smoke_test.py            # add --public on a free plan
 
 ## Releasing
 
-1. Update `__version__` in `src/onshape_jamcp/__init__.py` and `version` in `pyproject.toml`
-   (`test_version_is_consistent` enforces they match the top `CHANGELOG.md` entry).
-2. `uv run pytest && uv run ruff check . && uv run python scripts/smoke_test.py`.
-3. `uv build` → `uv publish` (see [publishing](publishing.md)).
-4. Tag `vX.Y.Z`; re-run Glama's claim/sync if `glama.json` changed.
+Releases are tag-driven and fully described in [publishing](publishing.md#2-pypi-so-uvx-onshape-jamcp-works).
+In short:
+
+```bash
+uv run python scripts/release.py bump patch    # versions in 3 places + CHANGELOG stub
+# fill in CHANGELOG.md, then:
+uv run python scripts/release.py publish --confirm yes   # preflight, verify, commit, tag, push
+```
+
+In VS Code use *Terminal → Run Task → `Release 7: PUBLISH`* (the other `Release …` tasks run the
+individual steps; `.vscode/tasks.json`).
+
+`.github/workflows/release.yml` then verifies, builds and publishes to PyPI (Trusted Publishing, no
+stored token) and creates the GitHub Release. `scripts/release.py` is standard-library only and
+covered by `tests/test_release.py`; `test_the_real_repository_is_release_consistent` fails if the
+version, package metadata and changelog ever drift apart.
 
 ## Ideas / roadmap
 

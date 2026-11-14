@@ -12,14 +12,10 @@ Checklist for taking onshape-jamcp from a local folder to a listed MCP server.
       (the account that will own the listing).
 - [ ] Decide the copyright holder in [`LICENSE`](../LICENSE) (currently "onshape-jamcp
       contributors") and add your name/organization to `authors` in `pyproject.toml`.
-- [ ] Decide whether `.claude/settings.json` and `.github/hooks/` belong in the public repo. They
-      are the personal "AI Helper" status-light hooks (copied from the esphome repo) and contain a
-      private LAN address (`172.16.1.15`). They are harmless to others - the hooks never fail a turn
-      and just time out when the device is absent - but you may prefer to add both paths to
-      `.gitignore` before the first push. They are not part of the wheel, sdist or Docker image.
 - [ ] Run `uv run python scripts/smoke_test.py` against your Onshape account - ship only what you
       verified. Update the "Status" note in the README accordingly.
-- [ ] `uv run pytest` and `uv run ruff check src tests scripts` are green.
+- [ ] `uv run pytest` and `uv run ruff check src tests scripts` are green, and
+      `uv run python scripts/release.py check` says OK.
 
 ## 1. GitHub
 
@@ -40,14 +36,110 @@ Repository, Issues) to `pyproject.toml` with the real URLs. The CI workflow in
 
 ## 2. PyPI (so `uvx onshape-jamcp` works)
 
+Publishing and every later update are automated by
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) using PyPI **Trusted
+Publishing** (OpenID Connect): GitHub proves its identity to PyPI for each run, so **no API token
+is ever stored** in the repository or in GitHub secrets.
+
+### One-time setup
+
+1. **Push the repository to GitHub** (section 1) so `release.yml` exists on the default branch.
+2. **Register a pending publisher on PyPI** at <https://pypi.org/manage/account/publishing/>
+   ("Add a new pending publisher"). It lets the first release create the project:
+
+   | Field | Value |
+   |---|---|
+   | PyPI project name | `onshape-jamcp` (free on PyPI as of 2026-11-14) |
+   | Owner | your GitHub user or organization (`glama.json` lists `YBalan`; use whatever owns the repo) |
+   | Repository name | the GitHub repository, e.g. `onshape-jamcp` |
+   | Workflow name | `release.yml` |
+   | Environment name | `pypi` |
+
+   Every field must match exactly (case-sensitive), otherwise PyPI refuses with `invalid-publisher`.
+3. **Optional but recommended - TestPyPI** for rehearsals: the same form at
+   <https://test.pypi.org/manage/account/publishing/> with environment name `testpypi`.
+4. **Create the GitHub environments** (repository → *Settings → Environments*): `pypi` and
+   `testpypi`. On `pypi`, add yourself under *Required reviewers* - every real release then waits
+   for your one-click approval - and limit deployment branches/tags to `v*`.
+
+### Rehearse on TestPyPI
+
+*Actions → Release → Run workflow → target `testpypi`*. It runs the full verification, builds the
+package and uploads to TestPyPI (re-running is fine; existing files are skipped). Check the page at
+`https://test.pypi.org/project/onshape-jamcp/`, and if you want to try the install, do it in a
+throwaway virtualenv:
+
 ```bash
-uv build                       # dist/onshape_jamcp-0.1.0*.whl / .tar.gz
-uv publish --token <pypi-token>
+pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ onshape-jamcp
+onshape-jamcp --version
 ```
 
-Check the name `onshape-jamcp` is free on PyPI first. After publishing, the config snippets in the
-README work as written. (You can try the build before uploading:
-`uvx --from dist/onshape_jamcp-0.1.0-py3-none-any.whl onshape-jamcp --version`.)
+### Release (first publish and every update)
+
+The first release is the version already in the repository (`0.1.0`); skip the bump for it.
+
+**In VS Code** (*Terminal → Run Task…*, tasks defined in [`.vscode/tasks.json`](../.vscode/tasks.json)):
+
+| Task | What it does |
+|---|---|
+| `Release 2: Bump version (patch / minor / major)` | asks which kind, then updates the version in all three places and adds a `CHANGELOG.md` stub (`2b` takes an exact version). Replace the TODO it leaves. |
+| `Release 1: Check versions + changelog` | versions agree, changelog entry is dated and finished |
+| `Release 3: Preview release notes` | prints what will become the GitHub Release text |
+| `Release 4: Verify` | lint, format, tests, docs-in-sync, version check, clean build + `twine check`; stops at the first failure |
+| `Release 4b: Preflight` | read-only: lists uncommitted or untracked files, shows the tag, the remote and the branch |
+| `Release 5 / 5b: Smoke test on live Onshape` | optional live check with your keys (`5` = public throw-away document for free plans) |
+| `Release 6: TestPyPI dry run` | starts the workflow with target `testpypi` through the GitHub CLI (`gh`) |
+| **`Release 7: PUBLISH`** | asks *"Release now?"* (default **No**), then: preflight → verify → commit **only** the release files → tag `vX.Y.Z` → push the branch, then the tag. GitHub Actions publishes to PyPI. |
+
+The same thing from a terminal:
+
+```bash
+uv run python scripts/release.py bump patch      # patch | minor | major | X.Y.Z  (skip for 0.1.0)
+#   edit CHANGELOG.md: replace the TODO under the new version
+uv run python scripts/release.py publish --confirm yes
+```
+
+`publish` is built to fail safe - every one of these is covered by tests that run real git against
+a throw-away repository:
+
+- it does nothing unless the confirmation is exactly `yes` (the VS Code prompt defaults to **No**);
+- **preflight runs before anything changes**: the version/changelog must be consistent, there must be
+  no uncommitted changes outside the release files, **no untracked files** (a forgotten
+  `git add` - say, the workflow file itself - would otherwise publish nothing), no existing tag and a
+  remote (`origin`, or the only remote, whatever it is called);
+- verification runs *before* the commit, so a failing test leaves git untouched;
+- the commit contains only `__init__.py`, `pyproject.toml`, `CHANGELOG.md` (and `uv.lock` if it
+  changed), even if you had staged other files;
+- the branch is pushed **first** and the tag only if that succeeds, so a rejected push can never
+  start a release from a commit that is not on the branch.
+
+If a push is rejected (someone else pushed first) the command says what is left over locally. You
+can also run the steps one by one: `release.py commit`, `tag`, `push --confirm yes`.
+
+What the tag triggers:
+
+| Job | What it does |
+|---|---|
+| **verify** | `release.py check --tag vX.Y.Z` (tag = `pyproject` = `__init__` = newest `CHANGELOG` heading, dated, no TODO), ruff, the full test suite, docs-in-sync check |
+| **build** | `python -m build`, `twine check`, installs the built wheel in a clean venv and runs `onshape-jamcp --version` |
+| **publish-pypi** | uploads to PyPI via Trusted Publishing (waits for your approval if you set required reviewers) |
+| **github-release** | creates the GitHub Release with the `CHANGELOG.md` section as its notes and the wheel/sdist attached |
+
+Anything that fails in *verify* or *build* stops the release before anything is uploaded.
+
+### Good to know
+
+- **PyPI versions are immutable.** A published version can never be replaced; fix forward with a new
+  patch version. (A bad release can be *yanked* in the PyPI UI so installers skip it.)
+- `release.py` never uploads to PyPI itself - pushing the tag is what starts the workflow that does.
+  Its git steps (`commit`, `tag`, `push`, `publish`) only run on request and refuse to proceed
+  without `--confirm yes`. `python scripts/release.py --help` lists everything.
+- **Manual fallback** (no GitHub Actions): `uv run python scripts/release.py build`, then
+  `uv publish --token <token>` with a token created at <https://pypi.org/manage/account/token/>.
+- Add `[project.urls]` (Homepage, Repository, Issues) to `pyproject.toml` with your real URLs so the
+  PyPI page links back to the repository.
+- After the first release the install lines in the README work as written. Glama's maintenance
+  grade also rewards regular releases.
 
 ## 3. Glama (servers directory)
 

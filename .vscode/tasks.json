@@ -1,0 +1,263 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "bumpKind",
+      "type": "pickString",
+      "description": "Bump the version by...",
+      "options": [
+        "patch",
+        "minor",
+        "major"
+      ],
+      "default": "patch"
+    },
+    {
+      "id": "exactVersion",
+      "type": "promptString",
+      "description": "Exact new version (MAJOR.MINOR.PATCH, for example 0.2.0)"
+    },
+    {
+      "id": "confirmPublish",
+      "type": "pickString",
+      "description": "Release now? This commits, tags and pushes; GitHub Actions then publishes to PyPI. A PyPI version can never be replaced.",
+      "options": [
+        {
+          "label": "No - cancel (nothing changes)",
+          "value": "no"
+        },
+        {
+          "label": "Yes - verify, commit, tag, push and publish",
+          "value": "yes"
+        }
+      ],
+      "default": "no"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "Release 1: Check versions + changelog",
+      "detail": "Version in __init__.py, pyproject.toml and CHANGELOG.md agree; changelog is dated and has no TODO.",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/release.py",
+        "check"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Release 2: Bump version (patch / minor / major)",
+      "detail": "Updates the version in all three places and adds a CHANGELOG stub. Then fill in the TODO.",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/release.py",
+        "bump",
+        "${input:bumpKind}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Release 2b: Bump to an exact version",
+      "detail": "Same as above but you type the version (must be greater than the current one).",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/release.py",
+        "bump",
+        "${input:exactVersion}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Release 3: Preview release notes",
+      "detail": "Prints the CHANGELOG section that becomes the GitHub Release description.",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/release.py",
+        "notes"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Release 4: Verify (lint, format, tests, docs, build)",
+      "detail": "The full quality gate, stopping at the first failure. Changes nothing in git.",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/release.py",
+        "verify"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Release 4b: Preflight (git state, remote, tag)",
+      "detail": "Read-only. Would a release start right now? Reports uncommitted/untracked files, the tag, the remote and the branch.",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/release.py",
+        "preflight"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Release 5: Smoke test on live Onshape (public doc, free plan)",
+      "detail": "Needs ONSHAPE_ACCESS_KEY / ONSHAPE_SECRET_KEY in the environment or .env. Creates then trashes a throwaway PUBLIC document.",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/smoke_test.py",
+        "--public"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Release 5b: Smoke test on live Onshape (private doc)",
+      "detail": "For paid Onshape plans. Needs ONSHAPE_ACCESS_KEY / ONSHAPE_SECRET_KEY in the environment or .env.",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/smoke_test.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Release 6: TestPyPI dry run (GitHub CLI)",
+      "detail": "Starts the Release workflow with target=testpypi on GitHub. Needs the gh CLI, a pushed repo and the TestPyPI setup.",
+      "type": "process",
+      "command": "gh",
+      "args": [
+        "workflow",
+        "run",
+        "release.yml",
+        "-f",
+        "target=testpypi"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Release 7: PUBLISH (verify, commit, tag, push -> PyPI)",
+      "detail": "Asks for confirmation, then: preflight, verify, commit release files only, tag vX.Y.Z, push. GitHub Actions publishes to PyPI.",
+      "type": "process",
+      "command": "${workspaceFolder}/.venv/bin/python",
+      "windows": {
+        "command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+      },
+      "args": [
+        "scripts/release.py",
+        "publish",
+        "--confirm",
+        "${input:confirmPublish}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true,
+        "focus": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}
