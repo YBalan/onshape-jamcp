@@ -105,6 +105,87 @@ class TestBump:
             release.bump(repo, "patch", dt.date(2026, 3, 1))
 
 
+UNRELEASED = "## [Unreleased]\n\n### Fixed\n- Fixed the thing.\n- Fixed the other thing.\n\n"
+
+
+class TestBumpChangelogSources:
+    """Where the new version's changelog text comes from: [Unreleased], a typed note, or a TODO."""
+
+    def with_unreleased(self, repo, body=UNRELEASED):
+        path = repo / "CHANGELOG.md"
+        path.write_text(path.read_text().replace("## [0.2.0]", body + "## [0.2.0]", 1))
+
+    def test_unreleased_bullets_are_promoted_and_an_empty_unreleased_stays_on_top(self, repo):
+        self.with_unreleased(repo)
+        release.bump(repo, "patch", dt.date(2026, 3, 1))
+        changelog = (repo / "CHANGELOG.md").read_text()
+        assert (
+            "## [Unreleased]\n\n## [0.2.1] - 2026-03-01\n\n### Fixed\n- Fixed the thing."
+            in changelog
+        )
+        assert changelog.index("## [0.2.1]") < changelog.index("## [0.2.0]")
+        assert release.PLACEHOLDER not in changelog
+        assert release.check(repo) == []  # dated, has bullets, no TODO: ready as it stands
+        assert release.read_versions(repo)[release.CHANGELOG_FILE] == "0.2.1"
+
+    def test_a_typed_note_becomes_the_bullet(self, repo):
+        release.bump(repo, "minor", dt.date(2026, 3, 1), notes="  Added the shiny feature.  ")
+        changelog = (repo / "CHANGELOG.md").read_text()
+        assert "## [0.3.0] - 2026-03-01\n\n### Changed\n- Added the shiny feature.\n" in changelog
+        assert release.check(repo) == []
+
+    def test_without_any_notes_a_todo_stub_blocks_the_release(self, repo):
+        release.bump(repo, "patch", dt.date(2026, 3, 1))
+        assert any("TODO" in p for p in release.check(repo))
+
+    def test_an_empty_unreleased_heading_is_skipped_over(self, repo):
+        self.with_unreleased(repo, "## [Unreleased]\n\n")
+        release.bump(repo, "patch", dt.date(2026, 3, 1), notes="A note.")
+        changelog = (repo / "CHANGELOG.md").read_text()
+        assert changelog.index("## [Unreleased]") < changelog.index("## [0.2.1]")
+        assert changelog.index("## [0.2.1]") < changelog.index("## [0.2.0]")
+
+    def test_two_sources_are_refused_rather_than_merged(self, repo):
+        self.with_unreleased(repo)
+        before = (repo / "CHANGELOG.md").read_text()
+        with pytest.raises(release.ReleaseError, match="one source"):
+            release.bump(repo, "patch", dt.date(2026, 3, 1), notes="Also this.")
+        assert (repo / "CHANGELOG.md").read_text() == before
+
+    def test_release_notes_source(self, repo):
+        text = (repo / "CHANGELOG.md").read_text()
+        with pytest.raises(release.ReleaseError, match="Nothing to release"):
+            release.release_notes_source(text, None)
+        assert release.release_notes_source(text, "typed") == "the note you typed"
+        self.with_unreleased(repo)
+        text = (repo / "CHANGELOG.md").read_text()
+        assert "[Unreleased]" in release.release_notes_source(text, None)
+
+    def test_unreleased_without_bullets_does_not_count(self):
+        assert not release.unreleased_notes(
+            "## [Unreleased]\n\nnothing yet\n\n## [0.1.0] - 2026-01-01\n- x\n"
+        )
+        assert release.unreleased_notes("## [Unreleased]\n- x\n\n## [0.1.0] - 2026-01-01\n- y\n")
+
+
+class TestActionsUrl:
+    @pytest.mark.parametrize(
+        "remote",
+        [
+            "https://github.com/YBalan/onshape-jamcp.git",
+            "https://github.com/YBalan/onshape-jamcp",
+            "git@github.com:YBalan/onshape-jamcp.git",
+            "ssh://git@github.com/YBalan/onshape-jamcp.git",
+        ],
+    )
+    def test_github_remotes(self, remote):
+        assert release.actions_url(remote) == "https://github.com/YBalan/onshape-jamcp/actions"
+
+    @pytest.mark.parametrize("remote", ["/tmp/remote.git", "https://gitlab.com/a/b.git", ""])
+    def test_other_remotes_give_no_link(self, remote):
+        assert release.actions_url(remote) is None
+
+
 class TestNotes:
     def test_section_extraction(self):
         section = release.changelog_section(CHANGELOG, "0.1.0")

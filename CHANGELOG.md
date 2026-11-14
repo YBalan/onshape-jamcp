@@ -4,6 +4,8 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
 ## [0.1.0] - 2026-11-14
 
 First release (alpha).
@@ -22,8 +24,9 @@ First release (alpha).
 - Release automation: tag-triggered `release.yml` (verify, build, PyPI Trusted Publishing, GitHub
   Release) and `scripts/release.py` (`check`, `notes`, `bump`, `build`, `verify`, `preflight`,
   guarded `commit` / `tag` / `push` / `publish`).
-- VS Code tasks (`.vscode/tasks.json`) for the whole release flow; `Release 7: PUBLISH` asks for
-  confirmation (default No).
+- One VS Code task, `Release` (`.vscode/tasks.json`), for the whole flow: it asks which version, an
+  optional note and Preview vs real, then bumps, verifies (restoring the files on failure), commits,
+  tags and pushes. Notes come from `## [Unreleased]` or a typed line.
 
 ### Fixed during live verification
 - `whoami` no longer reports success for an anonymous session (Onshape returns `200 {}`).

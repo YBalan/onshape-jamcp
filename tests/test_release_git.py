@@ -283,3 +283,115 @@ class TestCommandLineSafety:
     def test_defaults_never_act(self, argv, capsys):
         assert release.main(argv) == 1
         assert "error:" in capsys.readouterr().err
+
+
+# --- the single `release` command ----------------------------------------------------------
+
+
+def release_files(sb: Sandbox) -> dict[str, bytes]:
+    return {n: (sb.work / n).read_bytes() for n in release.RELEASE_FILES if (sb.work / n).exists()}
+
+
+def go(sb: Sandbox, bump="patch", notes="", confirm="yes", steps=OK_STEP):
+    """Run the whole release the way the VS Code task does (without the real quality gate)."""
+    return release.release(
+        sb.work, bump, notes, confirm, steps=steps, today=dt.date(2026, 3, 1), refresh=False
+    )
+
+
+@needs_git
+class TestReleaseCommand:
+    def test_patch_release_with_a_typed_note_does_everything(self, sandbox):
+        assert go(sandbox, notes="Fixed a thing.") == "v0.2.1"
+        assert (sandbox.work / "pyproject.toml").read_text().count('version = "0.2.1"') == 1
+        assert "- Fixed a thing." in (sandbox.work / "CHANGELOG.md").read_text()
+        assert git(sandbox.work, "log", "-1", "--format=%s") == "Release 0.2.1"
+        assert git(sandbox.work, "status", "--porcelain") == ""
+        assert any(t.startswith("v0.2.1") for t in sandbox.remote_tags())
+        assert sandbox.remote_head() == git(sandbox.work, "rev-parse", "HEAD")
+
+    def test_notes_written_under_unreleased_are_released_and_committed(self, sandbox):
+        """The everyday workflow: jot notes in CHANGELOG while working, then just run Release."""
+        path = sandbox.work / "CHANGELOG.md"
+        path.write_text(path.read_text().replace("## [0.2.0]", UNRELEASED_NOTES + "## [0.2.0]", 1))
+        assert go(sandbox) == "v0.2.1"  # no typed note needed
+        changelog = path.read_text()
+        assert "## [Unreleased]\n\n## [0.2.1] - 2026-03-01" in changelog
+        assert "- Fixed the thing." in changelog
+        assert "Fixed the thing." in git(sandbox.work, "show", "HEAD:CHANGELOG.md")  # committed
+        assert git(sandbox.work, "status", "--porcelain") == ""
+
+    def test_preview_changes_nothing_but_still_runs_the_checks(self, sandbox):
+        marker = sandbox.work / "checks-ran"
+        steps = [("probe", [sys.executable, "-c", f"open({str(marker)!r}, 'w').close()"])]
+        before, head = release_files(sandbox), git(sandbox.work, "rev-parse", "HEAD")
+        for answer in ("no", "", "y", "YES", "preview"):
+            marker.unlink(missing_ok=True)
+            assert go(sandbox, notes="A note.", confirm=answer, steps=steps) == "v0.2.1"
+            assert marker.exists()  # the quality gate did run
+        assert release_files(sandbox) == before
+        assert git(sandbox.work, "rev-parse", "HEAD") == head
+        assert git(sandbox.work, "tag") == "" and sandbox.remote_tags() == []
+
+    def test_nothing_to_release_stops_before_any_change(self, sandbox):
+        before = release_files(sandbox)
+        with pytest.raises(release.ReleaseError, match="Nothing to release"):
+            go(sandbox)
+        assert release_files(sandbox) == before and git(sandbox.work, "tag") == ""
+
+    def test_the_current_version_can_be_released_as_it_is(self, sandbox):
+        """First release: 0.2.0 is already written and dated, so there is nothing to bump."""
+        head = git(sandbox.work, "rev-parse", "HEAD")
+        assert go(sandbox, bump="current") == "v0.2.0"
+        assert git(sandbox.work, "rev-parse", "HEAD") == head  # no extra commit
+        assert any(t.startswith("v0.2.0") for t in sandbox.remote_tags())
+
+    def test_current_rejects_notes_and_already_tagged_versions(self, sandbox):
+        with pytest.raises(release.ReleaseError, match="only used when bumping"):
+            go(sandbox, bump="current", notes="ignored?")
+        git(sandbox.work, "tag", "v0.2.0")
+        with pytest.raises(release.ReleaseError, match="already exists"):
+            go(sandbox, bump="current")
+
+    def test_a_failed_check_after_the_bump_restores_every_file(self, sandbox):
+        # The maintainer's own uncommitted notes must survive the rollback byte for byte.
+        path = sandbox.work / "CHANGELOG.md"
+        path.write_text(path.read_text().replace("## [0.2.0]", UNRELEASED_NOTES + "## [0.2.0]", 1))
+        before, head = release_files(sandbox), git(sandbox.work, "rev-parse", "HEAD")
+        steps = [("tests", [sys.executable, "-c", "raise SystemExit(1)"])]
+        with pytest.raises(release.ReleaseError, match="files were restored"):
+            go(sandbox, steps=steps)
+        assert release_files(sandbox) == before  # version files and the changelog edit
+        assert git(sandbox.work, "rev-parse", "HEAD") == head
+        assert git(sandbox.work, "tag") == "" and sandbox.remote_tags() == []
+
+    def test_an_unrelated_dirty_file_blocks_before_anything_changes(self, sandbox):
+        (sandbox.work / "README.md").write_text("dirty\n")
+        before = release_files(sandbox)
+        with pytest.raises(release.ReleaseError, match="outside the release files"):
+            go(sandbox, notes="A note.")
+        assert release_files(sandbox) == before
+
+    def test_explicit_versions_and_bad_choices(self, sandbox):
+        with pytest.raises(release.ReleaseError, match="not a plain"):
+            go(sandbox, bump="huge", notes="x")
+        with pytest.raises(release.ReleaseError, match="greater"):
+            go(sandbox, bump="0.1.0", notes="x")
+        assert go(sandbox, bump="0.5.0", notes="Jumped ahead.") == "v0.5.0"
+
+    def test_a_rejected_push_keeps_the_release_locally_and_explains(self, sandbox, tmp_path):
+        other = tmp_path / "other"
+        git(tmp_path, "clone", "-q", str(sandbox.remote), str(other))
+        git(other, "config", "user.name", "Other")
+        git(other, "config", "user.email", "other@test.invalid")
+        (other / "x.txt").write_text("x\n")
+        git(other, "add", ".")
+        git(other, "commit", "-m", "someone else")
+        git(other, "push", "origin", "main")
+        with pytest.raises(release.ReleaseError, match="exist locally but were not pushed"):
+            go(sandbox, notes="A note.")
+        assert git(sandbox.work, "log", "-1", "--format=%s") == "Release 0.2.1"  # not rolled back
+        assert sandbox.remote_tags() == []
+
+
+UNRELEASED_NOTES = "## [Unreleased]\n\n### Fixed\n- Fixed the thing.\n\n"

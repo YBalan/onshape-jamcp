@@ -76,45 +76,65 @@ onshape-jamcp --version
 
 ### Release (first publish and every update)
 
-The first release is the version already in the repository (`0.1.0`); skip the bump for it.
+**One VS Code task does all of it:** *Terminal → Run Task… → `Release`* (defined in
+[`.vscode/tasks.json`](../.vscode/tasks.json)). It asks three questions:
 
-**In VS Code** (*Terminal → Run Task…*, tasks defined in [`.vscode/tasks.json`](../.vscode/tasks.json)):
-
-| Task | What it does |
+| Prompt | Choices |
 |---|---|
-| `Release 2: Bump version (patch / minor / major)` | asks which kind, then updates the version in all three places and adds a `CHANGELOG.md` stub (`2b` takes an exact version). Replace the TODO it leaves. |
-| `Release 1: Check versions + changelog` | versions agree, changelog entry is dated and finished |
-| `Release 3: Preview release notes` | prints what will become the GitHub Release text |
-| `Release 4: Verify` | lint, format, tests, docs-in-sync, version check, clean build + `twine check`; stops at the first failure |
-| `Release 4b: Preflight` | read-only: lists uncommitted or untracked files, shows the tag, the remote and the branch |
-| `Release 5 / 5b: Smoke test on live Onshape` | optional live check with your keys (`5` = public throw-away document for free plans) |
-| `Release 6: TestPyPI dry run` | starts the workflow with target `testpypi` through the GitHub CLI (`gh`) |
-| **`Release 7: PUBLISH`** | asks *"Release now?"* (default **No**), then: preflight → verify → commit **only** the release files → tag `vX.Y.Z` → push the branch, then the tag. GitHub Actions publishes to PyPI. |
+| **Which version?** | `current` - release the version already in the files (use this for the first release, `0.1.0`) · `patch` · `minor` · `major` |
+| **One-line release note** | Type a sentence, or leave it **empty** if the notes are already under `## [Unreleased]` in `CHANGELOG.md`, or you chose `current`. |
+| **Preview or release?** | **Preview** (the default): runs every check and shows the plan, changes nothing · **RELEASE for real** |
 
-The same thing from a terminal:
+Then, for a real release, it does everything in order and stops at the first problem:
+
+1. **Plan and preflight** (read-only): works out the new version and tag, checks that the changelog
+   has notes, that nothing is uncommitted outside the release files, that **no file is untracked**
+   (a forgotten `git add` - say, the workflow itself - would otherwise publish nothing), that the tag
+   is new and that a remote exists (`origin`, or the only remote, whatever it is called).
+2. **Bump** the version in `__init__.py`, `pyproject.toml` and `CHANGELOG.md` (the changelog entry
+   comes from `## [Unreleased]`, which is promoted to the new version and left empty, else from your
+   typed note) and refresh `uv.lock`.
+3. **Verify**: lint, format, the full test suite, docs-in-sync, version/changelog check, clean build
+   with `twine check`. **If anything fails, every release file is put back exactly as it was** and
+   nothing is committed.
+4. **Commit** only the release files, **tag** `vX.Y.Z`, push the branch and then the tag.
+5. **GitHub Actions** takes over and publishes to PyPI (below). The task prints the Actions link.
+
+**Everyday workflow:** while you work, jot user-facing changes under `## [Unreleased]` in
+`CHANGELOG.md` (Keep a Changelog style). When you want to ship, run the `Release` task, choose
+`patch`/`minor`/`major`, leave the note empty, and pick *Preview* first.
+
+The same from a terminal (preview unless you add `--confirm yes`):
 
 ```bash
-uv run python scripts/release.py bump patch      # patch | minor | major | X.Y.Z  (skip for 0.1.0)
-#   edit CHANGELOG.md: replace the TODO under the new version
-uv run python scripts/release.py publish --confirm yes
+uv run python scripts/release.py release --bump patch                 # preview
+uv run python scripts/release.py release --bump patch --confirm yes   # for real
+uv run python scripts/release.py release --bump minor --notes "Added revolve" --confirm yes
 ```
 
-`publish` is built to fail safe - every one of these is covered by tests that run real git against
-a throw-away repository:
+It is built to fail safe, and every point below is covered by tests that run real git against a
+throw-away repository with a local "remote":
 
-- it does nothing unless the confirmation is exactly `yes` (the VS Code prompt defaults to **No**);
-- **preflight runs before anything changes**: the version/changelog must be consistent, there must be
-  no uncommitted changes outside the release files, **no untracked files** (a forgotten
-  `git add` - say, the workflow file itself - would otherwise publish nothing), no existing tag and a
-  remote (`origin`, or the only remote, whatever it is called);
-- verification runs *before* the commit, so a failing test leaves git untouched;
+- it never acts unless the confirmation is exactly `yes` (the prompt defaults to *Preview*);
+- everything that can be checked is checked **before** anything changes;
+- a failure at any point before the commit restores the release files **byte for byte**, including
+  your own uncommitted changelog edits;
 - the commit contains only `__init__.py`, `pyproject.toml`, `CHANGELOG.md` (and `uv.lock` if it
   changed), even if you had staged other files;
 - the branch is pushed **first** and the tag only if that succeeds, so a rejected push can never
-  start a release from a commit that is not on the branch.
+  start a release from a commit that is not on the branch - if it is rejected, the message says what
+  is left over locally and how to finish.
 
-If a push is rejected (someone else pushed first) the command says what is left over locally. You
-can also run the steps one by one: `release.py commit`, `tag`, `push --confirm yes`.
+Optional extras, outside the task because they are not needed for every release:
+
+```bash
+uv run python scripts/smoke_test.py --public     # live check on your Onshape account (free plan)
+gh workflow run release.yml -f target=testpypi   # rehearse the upload on TestPyPI (or use the
+                                                 # Actions tab: Release -> Run workflow)
+```
+
+The individual steps also exist as subcommands (`check`, `notes`, `bump`, `verify`, `preflight`,
+`commit`, `tag`, `push`, `publish`) - see `python scripts/release.py --help`.
 
 What the tag triggers:
 

@@ -132,14 +132,13 @@ uv run python scripts/smoke_test.py            # add --public on a free plan
 Releases are tag-driven and fully described in [publishing](publishing.md#2-pypi-so-uvx-onshape-jamcp-works).
 In short:
 
-```bash
-uv run python scripts/release.py bump patch    # versions in 3 places + CHANGELOG stub
-# fill in CHANGELOG.md, then:
-uv run python scripts/release.py publish --confirm yes   # preflight, verify, commit, tag, push
-```
+Write user-facing changes under `## [Unreleased]` in `CHANGELOG.md` as you go, then in VS Code run
+*Terminal → Run Task → `Release`* (pick patch/minor/major, leave the note empty, choose *Preview*
+first). Or from a terminal:
 
-In VS Code use *Terminal → Run Task → `Release 7: PUBLISH`* (the other `Release …` tasks run the
-individual steps; `.vscode/tasks.json`).
+```bash
+uv run python scripts/release.py release --bump patch --confirm yes   # preview without --confirm
+```
 
 `.github/workflows/release.yml` then verifies, builds and publishes to PyPI (Trusted Publishing, no
 stored token) and creates the GitHub Release. `scripts/release.py` is standard-library only and
