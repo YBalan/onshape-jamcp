@@ -1,0 +1,18 @@
+# onshape-jamcp documentation
+
+**Just Another MCP** server for Onshape CAD - metric by default, with an optional screenshot-review
+toggle for the LLM.
+
+| If you want to... | Read |
+|---|---|
+| Install it and make your first part | [Getting started](getting-started.md) |
+| Switch to inches, turn screenshots off, set read-only | [Configuration](configuration.md) |
+| Do a specific task (holes, fillets, edits, export, ...) | [How-to recipes](how-to.md) |
+| Understand what screenshot review costs | [Screenshots & token cost](screenshots.md) |
+| Look up a tool and its parameters | [Tool reference](tools.md) |
+| Fix an error | [Troubleshooting](troubleshooting.md) |
+| Change the code or add a tool | [Development](development.md) |
+| Publish to PyPI / Glama | [Publishing](publishing.md) |
+| See how it differs from other Onshape MCP servers | [Comparison](comparison.md) |
+
+The project overview is in the [README](../README.md).
