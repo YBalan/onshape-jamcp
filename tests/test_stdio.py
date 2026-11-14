@@ -7,6 +7,8 @@ import sys
 from mcp import Client, StdioServerParameters
 from mcp_types import TextContent
 
+from onshape_jamcp import __version__
+
 CLEAN_ENV = {k: v for k, v in os.environ.items() if not k.startswith("ONSHAPE_")}
 
 
@@ -70,7 +72,8 @@ def test_help_and_version():
         timeout=60,
         env=CLEAN_ENV,
     )
-    assert out.returncode == 0 and out.stdout.startswith("onshape-jamcp 0.1.0")
+    # Never hard-code the version here: every release bumps it (that is how this once broke one).
+    assert out.returncode == 0 and out.stdout.strip() == f"onshape-jamcp {__version__}"
     helped = subprocess.run(
         [sys.executable, "-I", "-m", "onshape_jamcp", "--help"],
         capture_output=True,
