@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-14
+
+### Changed
+- Initial Version
+
 ## [0.1.0] - 2026-11-14
 
 First release (alpha).
