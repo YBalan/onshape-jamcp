@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-16
+
 ### Fixed
 - **`get_part_properties` measured all parts as one.** Onshape adds the parts up unless asked
   (`massAsGroup=false`), so two cubes showed as one 16000 mm3 "part". Each part now has its own entry
