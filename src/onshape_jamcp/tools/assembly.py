@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from .. import configurations, features, mates
 from ..app import App
 from ..client import q
-from ..errors import InputError
+from ..errors import InputError, OnshapeError
 from .common import Configuration, DocumentId, ElementId, Registrar, WorkspaceId
 
 
@@ -79,8 +79,20 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         """Insert a part (or a whole Part Studio) into an Assembly and return the new instances'
         IDs and names. Name the Assembly tab (rename) if it still says 'Assembly N'. Only when
         the user asks for an assembly. Join parts with add_mate."""
+        configurations.encode(configuration, app.units)  # validate before any request
         wid = await app.workspace(document_id, workspace_id)
-        cfg = configurations.encode(configuration, app.units)
+        cfg = None
+        if configuration:
+            source_document = source_document_id or document_id
+            try:
+                source_wid = (
+                    wid if source_document == document_id else await app.workspace(source_document)
+                )
+                cfg = await app.configuration_param(
+                    source_document, source_wid, source_element_id, configuration
+                )
+            except OnshapeError:  # cannot look the inputs up: send the names as given
+                cfg = configurations.encode(configuration, app.units)
         root = await root_assembly(document_id, wid, assembly_id)
         before = {i.get("id") for i in root.get("instances") or []}
         body: dict[str, Any] = {

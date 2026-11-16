@@ -35,6 +35,41 @@ def extrude_name(operation: str, depth: str, *, symmetric: bool = False, hole: b
     return f"{verb} {depth}{' (symmetric)' if symmetric else ''}"[:100]
 
 
+def _short(text: str) -> str:
+    return text[:100]
+
+
+def circular_pattern_name(count: str, angle: str) -> str:
+    """ "Circular pattern x6" (a variable shows as "x#spokes"); a partial angle is appended."""
+    suffix = "" if angle.replace(" deg", "") == "360" else f" over {angle}"
+    return _short(f"Circular pattern x{count}{suffix}")
+
+
+def linear_pattern_name(count: str, distance: str, second: tuple[str, str] | None = None) -> str:
+    text = f"Linear pattern x{count} @ {distance}"
+    if second:
+        text += f", x{second[0]} @ {second[1]}"
+    return _short(text)
+
+
+def mirror_name(plane: str) -> str:
+    return _short(f"Mirror ({plane})")
+
+
+def revolve_name(angle: str) -> str:
+    return _short(f"Revolve {angle}")
+
+
+def shell_name(thickness: str) -> str:
+    return _short(f"Shell {thickness}")
+
+
+def boolean_name(operation: str) -> str:
+    return {"union": "Union", "subtract": "Subtract", "intersect": "Intersect"}.get(
+        operation, "Boolean"
+    )
+
+
 def is_auto_extrude_name(name: object) -> bool:
     """True for a name made by ``extrude_name`` (so it may be refreshed when the depth changes)."""
     return bool(_AUTO_EXTRUDE.match(str(name or "")))

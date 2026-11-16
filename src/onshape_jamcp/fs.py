@@ -90,6 +90,22 @@ def tight_box_script(by_part: bool) -> str:
     )
 
 
+_FEATURE_ID = re.compile(r"^[A-Za-z0-9_]+$")
+
+
+def construction_edge_ids_script(feature_id: str) -> str:
+    """FeatureScript returning the IDs of the construction lines (edges) a sketch contains."""
+    if not _FEATURE_ID.match(feature_id):  # also guards against script injection
+        raise ValueError(f"Not a feature ID: {feature_id!r}")
+    return (
+        "function(context is Context, queries) { "
+        "return transientQueriesToStrings(evaluateQuery(context, "
+        'qConstructionFilter(qCreatedBy(makeId("' + feature_id + '"), EntityType.EDGE), '
+        "ConstructionObject.YES))); "
+        "}"
+    )
+
+
 def plane_id_script(plane_name: str) -> str:
     """FeatureScript returning the transient ID of an origin plane (Top/Front/Right)."""
     if plane_name not in STANDARD_PLANES:  # also guards against script injection

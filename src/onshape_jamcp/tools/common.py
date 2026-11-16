@@ -48,7 +48,9 @@ Configuration = Annotated[
     dict[str, str | float | int],
     Field(
         description="Configuration to evaluate, e.g. {'Size': 'M18'} (list inputs by option "
-        "name, number inputs as a value). Omit for the default configuration."
+        "name, number inputs as a value). Input and option names are the labels shown in "
+        "Onshape (get_configuration lists them; its IDs work too). Omit for the default "
+        "configuration."
     ),
 ]
 

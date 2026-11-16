@@ -20,17 +20,17 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
 
     @tool(title="Check Onshape connection", read_only=True)
     async def whoami() -> dict[str, Any]:
-        """Verify that the configured API keys work by asking Onshape which account they belong
-        to. Use it to diagnose authentication problems before doing real work."""
+        """Verify that the configured credentials (API keys or OAuth sign-in) work by asking
+        Onshape which account they belong to. Use it to diagnose authentication problems before
+        doing real work."""
         info = await app.client.get("/users/sessioninfo")
         if not info.get("id"):
             # Onshape answers 200 with an empty body to requests it could not authenticate, so
-            # a successful HTTP status alone does not prove the keys work.
+            # a successful HTTP status alone does not prove the credentials work.
             raise OnshapeError(
                 401,
-                "Onshape answered but did not recognise the API keys (anonymous session)",
-                hint="check ONSHAPE_ACCESS_KEY / ONSHAPE_SECRET_KEY; the secret is exactly 48 "
-                "characters, so look for stray spaces or punctuation copied along with it",
+                "Onshape answered but did not recognise the credentials (anonymous session)",
+                hint=app.settings.auth_help,
             )
         return {
             "connected": True,

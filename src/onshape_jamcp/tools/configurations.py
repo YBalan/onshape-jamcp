@@ -17,15 +17,30 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         return f"/elements/d/{q(document_id)}/w/{q(workspace_id)}/e/{q(element_id)}/configuration"
 
     def describe(parameter: dict[str, Any]) -> dict[str, Any]:
-        entry: dict[str, Any] = {"name": parameter.get("parameterId")}
+        # Inputs made in Onshape's UI have a generated ID that differs from the label shown
+        # there; list the label (what people and the other tools use) and the ID beside it.
+        entry: dict[str, Any] = {"name": configurations.input_label(parameter)}
+        if parameter.get("parameterId") and parameter["parameterId"] != entry["name"]:
+            entry["id"] = parameter["parameterId"]
         if configurations.is_enum(parameter):
+            options = parameter.get("options") or []
             entry.update(
                 {
                     "type": "list",
-                    "options": [o.get("option") for o in parameter.get("options") or []],
-                    "default": parameter.get("defaultValue"),
+                    "options": [
+                        configurations.option_label(parameter, o.get("option")) for o in options
+                    ],
+                    "default": configurations.option_label(
+                        parameter, parameter.get("defaultValue")
+                    ),
                 }
             )
+            ids = {
+                configurations.option_label(parameter, o.get("option")): o.get("option")
+                for o in options
+            }
+            if any(label != option_id for label, option_id in ids.items()):
+                entry["option_ids"] = ids
         elif "Quantity" in str(parameter.get("btType")):
             quantity = parameter.get("rangeAndDefault") or {}
             kind = str(parameter.get("quantityType") or "REAL").lower()
@@ -59,8 +74,10 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         document_id: DocumentId, element_id: ElementId, workspace_id: WorkspaceId = None
     ) -> dict[str, Any]:
         """List the configuration inputs of a Part Studio (for example a 'Size' list with M10 and
-        M18, or a 'Length'), with their options and defaults. Other tools take a
-        `configuration` such as {"Size": "M18"} to measure or look at one variant."""
+        M18, or a 'Length'), with their options and defaults. Names are the labels shown in
+        Onshape; for an input made in Onshape's UI the generated `id` (and `option_ids`) are shown
+        beside them. Other tools take a `configuration` such as {"Size": "M18"} (labels or IDs)
+        to measure or look at one variant."""
         wid = await app.workspace(document_id, workspace_id)
         data = await app.client.get(path(document_id, wid, element_id))
         return {"inputs": [describe(p) for p in data.get("configurationParameters") or []]}
@@ -114,7 +131,9 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             )
         base = path(document_id, wid, element_id)
         existing = (await app.client.get(base)).get("configurationParameters") or []
-        merged = [p for p in existing if p.get("parameterId") != name] + [parameter]
+        merged = [
+            p for p in existing if name not in (p.get("parameterId"), p.get("parameterName"))
+        ] + [parameter]
         await app.client.post(
             base,
             {
@@ -123,5 +142,6 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
                 "currentConfiguration": configurations.current_for(merged),
             },
         )
+        app.forget_configuration(document_id, wid, element_id)
         data = await app.client.get(base)
         return {"inputs": [describe(p) for p in data.get("configurationParameters") or []]}

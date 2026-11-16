@@ -1,19 +1,23 @@
 """Command-line entry point: ``onshape-jamcp`` / ``python -m onshape_jamcp``."""
 
 import argparse
+import asyncio
 import logging
 import os
 import sys
+import webbrowser
 from collections.abc import Sequence
 
-from . import __version__
+from . import __version__, oauth
 from .config import Settings
-from .errors import ConfigError
+from .errors import ConfigError, JamcpError
 from .server import build_server
 
 EPILOG = """\
 Settings are read from environment variables (flags override them):
   ONSHAPE_ACCESS_KEY / ONSHAPE_SECRET_KEY   API keys from https://dev-portal.onshape.com/keys
+  ONSHAPE_OAUTH_CLIENT_ID / _SECRET   your own Onshape OAuth application, instead of API keys;
+                                 then run: onshape-jamcp auth login   (see docs/oauth.md)
   ONSHAPE_UNITS                  metric (default, mm) | imperial (inches)
   ONSHAPE_SCREENSHOT_REVIEW      true (default) | false - send screenshots to the LLM or not
   ONSHAPE_READ_ONLY              true | false (default)
@@ -45,7 +49,53 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Disable every tool that modifies documents (ONSHAPE_READ_ONLY).",
     )
+    commands = parser.add_subparsers(dest="command", metavar="[command]")
+    auth = commands.add_parser(
+        "auth",
+        help="OAuth sign-in (instead of API keys): login, status, logout.",
+        description="Sign in to Onshape with OAuth. Needs ONSHAPE_OAUTH_CLIENT_ID and "
+        "ONSHAPE_OAUTH_CLIENT_SECRET (your own OAuth application); see docs/oauth.md.",
+    )
+    actions = auth.add_subparsers(dest="auth_command", required=True)
+    login = actions.add_parser("login", help="Sign in through the browser and store the tokens.")
+    login.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Only print the sign-in URL; open it yourself (e.g. on a remote machine).",
+    )
+    actions.add_parser("status", help="Show the OAuth configuration and sign-in state.")
+    actions.add_parser("logout", help="Delete the stored tokens.")
     return parser
+
+
+def run_auth(args: argparse.Namespace, settings: Settings) -> int:
+    """``onshape-jamcp auth ...``: returns the process exit code."""
+    if args.auth_command == "status":
+        for key, value in oauth.status(settings).items():
+            print(f"{key}: {value}")
+        return 0
+    if args.auth_command == "logout":
+        removed = oauth.TokenStore(settings.oauth_token_file).delete()
+        print("Signed out: token file deleted." if removed else "Nothing to do: not signed in.")
+        print("To revoke the application's access on Onshape's side, use your Onshape account.")
+        return 0
+    try:
+        asyncio.run(
+            oauth.login(
+                settings,
+                open_browser=(lambda url: None) if args.no_browser else webbrowser.open,
+            )
+        )
+    except JamcpError as exc:
+        print(f"onshape-jamcp: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("onshape-jamcp: sign-in cancelled.", file=sys.stderr)
+        return 130
+    print(f"Signed in. Tokens saved to {settings.oauth_token_file}")
+    if settings.auth_mode != "oauth":
+        print("API keys are also set and take precedence: set ONSHAPE_AUTH_MODE=oauth for OAuth.")
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -72,10 +122,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     except ConfigError as exc:
         print(f"onshape-jamcp: configuration error: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
+    if args.command == "auth":
+        raise SystemExit(run_auth(args, settings))
     if not settings.has_credentials:
         logging.getLogger("onshape_jamcp").warning(
-            "ONSHAPE_ACCESS_KEY / ONSHAPE_SECRET_KEY not set - tools that call Onshape will "
-            "report an error until they are configured."
+            "%s - tools that call Onshape will report an error until that is done.",
+            "Not signed in (OAuth): run `onshape-jamcp auth login`"
+            if settings.auth_mode == "oauth"
+            else "ONSHAPE_ACCESS_KEY / ONSHAPE_SECRET_KEY not set",
         )
     build_server(settings, log_level=level_name).run("stdio")  # type: ignore[arg-type]
 

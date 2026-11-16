@@ -1,7 +1,7 @@
 # Troubleshooting
 
 Start with two checks: ask the assistant to run **`get_settings`** (shows what the server believes
-its configuration is) and **`whoami`** (proves the API keys work).
+its configuration is) and **`whoami`** (proves the API keys or OAuth sign-in work).
 
 ## Connection and authentication
 
@@ -17,6 +17,24 @@ its configuration is) and **`whoami`** (proves the API keys work).
 | `Timed out after 60s` | Large model or slow network. Raise `ONSHAPE_TIMEOUT` (e.g. `180`). |
 | `Could not reach Onshape` | Network/proxy/DNS issue, or a wrong `ONSHAPE_BASE_URL`. |
 | `ONSHAPE_BASE_URL must use https` | Credentials are never sent over plain http (except to localhost). |
+
+## OAuth
+
+Setup and background: [OAuth sign-in](oauth.md). Run `onshape-jamcp auth status` first: it shows the
+mode, whether a client is configured, and whether you are signed in.
+
+| Symptom | Cause / fix |
+|---|---|
+| `Not signed in to Onshape` | Run `onshape-jamcp auth login` once, with the same `ONSHAPE_OAUTH_CLIENT_ID` / `_SECRET` as the MCP client (and the same `ONSHAPE_OAUTH_TOKEN_FILE`, if you set one). Then restart the client. |
+| `OAuth is selected but the application is not configured` | `ONSHAPE_OAUTH_CLIENT_ID` and `ONSHAPE_OAUTH_CLIENT_SECRET` did not reach the server. Put them in the client's `env`. |
+| The server uses API keys although OAuth is set up | API keys win when both are set. Remove them, or set `ONSHAPE_AUTH_MODE=oauth`. |
+| `Cannot listen on 127.0.0.1:18339` | Another program uses the port. Free it, or set `ONSHAPE_OAUTH_PORT` and register the same redirect URL (`http://localhost:<port>/callback`) with your application. |
+| The browser shows an error from Onshape instead of asking for consent | The redirect URL registered with the application does not match `http://localhost:18339/callback` exactly (scheme, host, port, path), or the client ID is wrong. |
+| `Onshape refused the OAuth sign-in (HTTP 400/401: ...)` | The client secret is wrong, or the code expired (it lasts about three minutes): run `auth login` again. The reason Onshape gave is in the brackets; the secret is never printed. |
+| `Onshape rejected the stored sign-in` | The grant was revoked or the refresh token expired. Run `auth login` again. |
+| `The stored sign-in belongs to a different OAuth application` | You changed the client ID. Run `auth login` again. |
+| `No sign-in arrived within 300 s` | The consent page was not completed, or the callback went to another machine (`--no-browser` on a remote host). Sign in on the machine that runs the command. |
+| `The OAuth token file ... is unreadable` | Delete the file (`auth logout`) and sign in again. |
 
 ## Server does not appear / start
 

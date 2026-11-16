@@ -1,10 +1,12 @@
-"""Async Onshape REST client with API-key authentication.
+"""Async Onshape REST client: API keys or OAuth.
 
-Two authentication modes are supported (``ONSHAPE_AUTH_MODE``):
+Three authentication modes are supported (``ONSHAPE_AUTH_MODE``):
 
 * ``hmac`` (default): the request is signed with the secret key, which is never transmitted.
 * ``basic``: HTTP Basic with ``access:secret``. Onshape documents this as lowest-security and
   "for local testing only"; it exists as a fallback if signing misbehaves.
+* ``oauth``: ``Authorization: Bearer <access token>`` from :mod:`onshape_jamcp.oauth`, renewed
+  before it expires and once more if Onshape answers ``401``.
 
 Redirects (Onshape answers some downloads with ``307``) are followed manually so that credentials
 are only ever attached to ``*.onshape.com`` / the configured base host.
@@ -27,6 +29,7 @@ import httpx
 from . import __version__
 from .config import Settings
 from .errors import NetworkError, OnshapeError
+from .oauth import OAuthSession
 
 log = logging.getLogger("onshape_jamcp.client")
 
@@ -114,8 +117,6 @@ def _error_message(response: httpx.Response) -> str:
 
 
 _HINTS = {
-    401: "check ONSHAPE_ACCESS_KEY / ONSHAPE_SECRET_KEY (the secret is exactly 48 characters - "
-    "look for stray spaces or punctuation) and that the API key has not been revoked",
     403: "the API key lacks the required scope (read/write/delete) or you lack permission on "
     "this document",
     404: "check the document, workspace and element IDs",
@@ -137,6 +138,7 @@ class OnshapeClient:
             follow_redirects=False,
             headers={"User-Agent": f"onshape-jamcp/{__version__}"},
         )
+        self._oauth = OAuthSession(settings, self._http) if settings.auth_mode == "oauth" else None
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -163,7 +165,10 @@ class OnshapeClient:
         expect: Expect = "json",
     ) -> Any:
         """Send one request and return JSON / bytes / text according to ``expect``."""
-        access_key, secret_key = self._settings.require_credentials()
+        if self._oauth is None:
+            access_key, secret_key = self._settings.require_credentials()
+        else:
+            access_key = secret_key = ""  # OAuth sends a bearer token instead of keys
         method = method.upper()
         url = f"{self._settings.base_url}{self.resolve_path(path)}"
         query = encode_query(params)
@@ -212,6 +217,7 @@ class OnshapeClient:
         expect: Expect,
         access_key: str,
         secret_key: str,
+        bearer: str | None = None,
     ) -> dict[str, str]:
         parts = urlsplit(url)
         headers = {"Accept": _JSON_ACCEPT if expect == "json" else "*/*"}
@@ -219,6 +225,9 @@ class OnshapeClient:
             headers["Content-Type"] = "application/json"
         if not self._trusted(parts.hostname):
             return headers  # never leak credentials to a third-party host (e.g. object storage)
+        if bearer is not None:
+            headers["Authorization"] = f"Bearer {bearer}"
+            return headers
         if self._settings.auth_mode == "basic":
             token = base64.b64encode(f"{access_key}:{secret_key}".encode()).decode()
             headers["Authorization"] = f"Basic {token}"
@@ -252,8 +261,12 @@ class OnshapeClient:
         access_key: str,
         secret_key: str,
     ) -> httpx.Response:
-        for attempt in range(_MAX_RATE_LIMIT_RETRIES + 1):
-            headers = self._headers(method, url, payload, expect, access_key, secret_key)
+        bearer = await self._oauth.access_token() if self._oauth else None
+        trusted = self._trusted(urlsplit(url).hostname)
+        renewed = False
+        attempt = 0
+        while True:
+            headers = self._headers(method, url, payload, expect, access_key, secret_key, bearer)
             try:
                 log.debug("%s %s", method, urlsplit(url).path)
                 response = await self._http.request(
@@ -271,16 +284,28 @@ class OnshapeClient:
                 raise NetworkError(
                     f"Could not reach Onshape at {self._settings.base_url}: {type(exc).__name__}"
                 ) from None
+            if response.status_code == 401 and self._oauth and bearer and trusted and not renewed:
+                # The access token ran out early or was revoked: renew it and try once more.
+                bearer = await self._oauth.renew_rejected(bearer)
+                renewed = True
+                continue
             if response.status_code == 429 and attempt < _MAX_RATE_LIMIT_RETRIES:
                 wait = _retry_after_seconds(response)
                 if wait > _MAX_RETRYABLE_WAIT:
                     return response  # a daily limit: fail now, with a clear message
                 delay = min(wait, 15.0)
                 log.warning("Rate limited by Onshape; retrying in %.1fs", delay)
+                attempt += 1
                 await asyncio.sleep(delay)
                 continue
             return response
-        raise AssertionError("unreachable")  # pragma: no cover
+
+    def _hint(self, response: httpx.Response) -> str | None:
+        if response.status_code == 429:
+            return _rate_limit_hint(response)
+        if response.status_code == 401:
+            return self._settings.auth_help
+        return _HINTS.get(response.status_code)
 
     def _parse(self, response: httpx.Response, expect: Expect) -> Any:
         if response.status_code >= 400:
@@ -292,9 +317,7 @@ class OnshapeClient:
                 response.status_code,
                 _error_message(response),
                 parsed,
-                hint=_rate_limit_hint(response)
-                if response.status_code == 429
-                else _HINTS.get(response.status_code),
+                hint=self._hint(response),
             )
         if expect == "bytes":
             return response.content

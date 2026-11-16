@@ -107,8 +107,10 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         built (shape, hole placement, orientation)."""
         settings = app.settings
         send_to_model = settings.screenshot_review if review is None else review
+        configurations.encode(configuration, app.units)  # validate before any request
         wid = await app.workspace(document_id, workspace_id)
         element_type = await app.element_type(document_id, wid, element_id)
+        cfg = await app.configuration_param(document_id, wid, element_id, configuration)
         base = f"{q(document_id)}/w/{q(wid)}/e/{q(element_id)}"
         if part_id:
             if element_type != "PARTSTUDIO":
@@ -136,8 +138,8 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             }
             if not part_id:
                 params["showAllParts"] = True
-            if configuration:
-                params["configuration"] = configurations.encode(configuration, app.units)
+            if cfg:
+                params["configuration"] = cfg
             data = await app.client.get(path, params)
             encoded = _flatten_images(data.get("images"))
             if not encoded:

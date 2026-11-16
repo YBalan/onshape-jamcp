@@ -20,7 +20,7 @@ screenshots** (which costs tokens) or not.
 | 📏 **Metric by default** | Every length you send or receive is in **mm**. Set `ONSHAPE_UNITS=imperial` for inches. Angles are always degrees. |
 | 👁️ **Screenshot review toggle** | `ONSHAPE_SCREENSHOT_REVIEW=true` sends renders to the model so it can *see* its work (≈ 640 tokens per 800×600 image). `false` only saves them to disk - zero image tokens. Override per call with `review`. |
 | 🔒 **Read-only mode** | `ONSHAPE_READ_ONLY=true` removes every tool that can modify a document. |
-| 🧰 **31 focused tools** | Documents, sketch → extrude → fillet/chamfer, edit parameters, measure, faces/edges, assemblies, screenshots, STEP/STL export - custom Feature Studio features such as Thread Creator, variables, configurations, part naming, plus escape hatches (raw feature JSON, FeatureScript, any REST endpoint). |
+| 🧰 **37 focused tools** | Documents, sketch → extrude / revolve → patterns, mirror, shell, boolean, fillet/chamfer, edit parameters, measure, faces/edges, assemblies, screenshots, STEP/STL export - custom Feature Studio features such as Thread Creator, variables, configurations, part naming, plus escape hatches (raw feature JSON, FeatureScript, any REST endpoint). |
 | 🧪 **Honest feedback loop** | Every modeling tool reports the feature's health (`OK`/`WARNING`/`ERROR`) so the model notices failures instead of piling more features on top. |
 
 ## Quick start
@@ -78,7 +78,8 @@ Set as environment variables (the `env` block of your MCP client) or CLI flags. 
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ONSHAPE_ACCESS_KEY` / `ONSHAPE_SECRET_KEY` | - | **Required.** API keys. |
+| `ONSHAPE_ACCESS_KEY` / `ONSHAPE_SECRET_KEY` | - | **Required** (or OAuth, next row). API keys. |
+| `ONSHAPE_OAUTH_CLIENT_ID` / `ONSHAPE_OAUTH_CLIENT_SECRET` | - | Alternative to API keys: your own Onshape OAuth app, then `onshape-jamcp auth login` once. See [docs/oauth.md](docs/oauth.md). |
 | `ONSHAPE_UNITS` | `metric` | `metric` = millimeters, `imperial` = inches. Flag: `--units`. |
 | `ONSHAPE_SCREENSHOT_REVIEW` | `true` | Send screenshots to the LLM (`true`) or only save them (`false`). Flag: `--[no-]screenshot-review`. |
 | `ONSHAPE_READ_ONLY` | `false` | Hide all write tools. Flag: `--read-only`. |
@@ -94,7 +95,7 @@ Everything else (image size, output folder, timeout, auth mode, API version, log
 | Server | `get_settings`, `whoami` |
 | Documents | `list_documents`, `get_document`, `create_document`, `create_element` |
 | Inspect | `list_features`, `list_parts`, `get_part_properties`, `get_body_details`, `get_assembly`, `list_custom_features`, `list_variables`, `get_configuration`, `run_featurescript` |
-| Model | `create_sketch`, `extrude`, `fillet`, `chamfer`, `update_feature`, `delete_feature`, `add_feature`, `add_custom_feature` |
+| Model | `create_sketch`, `extrude`, `revolve`, `circular_pattern`, `linear_pattern`, `mirror`, `shell`, `boolean`, `fillet`, `chamfer`, `update_feature`, `delete_feature`, `add_feature`, `add_custom_feature` |
 | Names, variables, configurations, assemblies | `rename`, `set_variable`, `set_configuration_input`, `insert_instance`, `add_mate` |
 | Look & export | `capture_screenshot`, `export_model` |
 | Escape hatch | `onshape_api_request` |
@@ -105,6 +106,7 @@ Full parameter reference (generated from the code): [docs/tools.md](docs/tools.m
 
 - [Getting started](docs/getting-started.md) - keys, installing in each client, first prompt
 - [Configuration](docs/configuration.md) - every setting, units, precedence
+- [OAuth sign-in](docs/oauth.md) - sign in with your Onshape account instead of API keys
 - [How-to recipes](docs/how-to.md) - holes, fillets, edits, inches, export, read-only, advanced features
 - [Threads and custom features](docs/threads.md) - ThreadCreator: bolt and nut example, every option, how to check it
 - [Parametric modeling](docs/parametric.md) - names, variables, configurations (M10 / M18) and assemblies
@@ -119,6 +121,8 @@ Full parameter reference (generated from the code): [docs/tools.md](docs/tools.m
 
 - API keys stay in your MCP client's config / environment. They are never returned by any tool,
   never logged, and requests are HMAC-signed so the secret is not even sent over the wire.
+  With OAuth the tokens live in a per-user file and are likewise never returned, logged or sent
+  anywhere but Onshape.
 - **Onshape's free plan makes every document public.** Do not model confidential work there.
 - Write tools act as *you* on your real documents. Use `ONSHAPE_READ_ONLY=true` when you only want
   the assistant to look around, and rely on Onshape's version history as your undo.

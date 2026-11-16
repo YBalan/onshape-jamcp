@@ -6,7 +6,41 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-16
+
+### Fixed
+- **`get_part_properties` measured all parts as one.** Onshape adds the parts up unless asked
+  (`massAsGroup=false`), so two cubes showed as one 16000 mm3 "part". Each part now has its own entry
+  (and a `total_volume` when there are several).
+- **Configuration inputs made in Onshape's UI.** Their generated IDs (`List_gfWXlOaT2Zmfyo`) and
+  option IDs (`_3Spoke`) differ from the labels shown in the UI (`Configuration`, `3Spoke`), and the
+  tools assumed ID = label. `get_configuration` now lists labels with the `id` / `option_ids` beside
+  them, and `configuration=` (measure, faces, screenshots, `insert_instance`), `set_variable`
+  `by_option` and `set_configuration_input` accept labels (any case) or IDs. An unknown input or
+  option is refused with the valid choices, where Onshape would silently have shown the default
+  variant. Checked live with an input shaped like a UI-made one.
+
 ### Added
+- **Patterns, mirror, revolve, shell and boolean:** `circular_pattern`, `linear_pattern`, `mirror`,
+  `revolve`, `shell` and `boolean` (37 tools now). Built from Onshape's own feature specs and checked
+  live by volume: 3 and 6 spokes around a hub (also with the count in a variable `#spokes`), rows and
+  grids along three directions, mirrors across origin planes, full / 90 degree / cutting revolves, an
+  open-top and a hollowed box, union / subtract / intersect. Patterns repeat a *feature* (`feature_ids`:
+  the extrude that makes one spoke, so the copies merge as it does - sent as Onshape's "full" pattern,
+  because its "faster" mode answered `ERROR` for a feature merged into a part), whole *parts*
+  (`part_ids`) or *faces*. The axis or direction is an edge / face ID, or `sketch:<feature_id>` for a
+  construction line (`x` / `y` / `z` for linear directions). Every reply says what changed (`effect`:
+  parts and volume before / after, parts created and removed) and warns when an accepted feature did
+  nothing (`verify=false` skips the two measuring requests).
+- **OAuth sign-in as an alternative to API keys.** Register your own Onshape OAuth application,
+  set `ONSHAPE_OAUTH_CLIENT_ID` / `ONSHAPE_OAUTH_CLIENT_SECRET`, and run `onshape-jamcp auth login`
+  once (browser, authorization-code flow on a `127.0.0.1` callback). The server then sends bearer
+  tokens, renews them before they expire and once more on a `401`, and keeps the refresh token in a
+  per-user file. New commands `auth login|status|logout`; new settings
+  `ONSHAPE_OAUTH_CLIENT_ID`, `_CLIENT_SECRET`, `_PORT`, `_TOKEN_FILE`, `_URL`; `ONSHAPE_AUTH_MODE`
+  accepts `oauth` (chosen automatically when only the OAuth client is set; API keys win when both
+  are). Checked live against a real Onshape OAuth application: sign-in, API calls, early refresh and
+  the retry after a rejected token. See `docs/oauth.md`.
 - **Custom features (Feature Scripts such as Thread Creator).** `list_custom_features` shows the
   custom features a Part Studio can use - or, with `feature_studio_url`, those a given Feature
   Studio defines - with their parameter IDs, types, units, defaults and options.
@@ -46,7 +80,7 @@ All notable changes to this project are documented here. The format follows
   Onshape's multi-update endpoint (`features/updates`, checked live: two variables, one request);
   `create_sketch` looks `#variables` up with one FeatureScript call instead of reading the feature
   list; the 9 MB feature specs are cached for 5 minutes.
-- 31 tools now.
+- 31 tools at that point (37 with the pattern and shaping tools below).
 
 ### Fixed
 - `update_feature` writes integer parameters (counts, e.g. thread turns) as plain numbers instead of

@@ -12,7 +12,9 @@ from . import (
     modeling,
     naming,
     output,
+    patterns,
     raw,
+    shaping,
     system,
     variables,
 )
@@ -29,6 +31,8 @@ def register_all(mcp: MCPServer, app: App) -> None:
         configurations,
         assembly,
         modeling,
+        patterns,
+        shaping,
         naming,
         custom,
         output,

@@ -3,6 +3,11 @@
 Checked live: an enum input defined through ``POST .../configuration`` can drive a variable per
 option (a *configured* variable value), and the whole model - sketches, extrudes, threads -
 follows ``?configuration=Size=M18`` on any read call.
+
+Inputs made in Onshape's own UI differ from the ones this server creates: the ID is generated
+(``List_gfWXlOaT2Zmfyo``) and differs from the label you see (``Configuration``), and so do the
+options (``_3Spoke`` vs ``3Spoke``). Calls to Onshape need the IDs; people and models use the
+labels. :func:`find_input`, :func:`find_option` and :func:`resolve` accept either.
 """
 
 from typing import Any
@@ -37,6 +42,79 @@ def encode(configuration: Configuration | None, units: UnitSystem) -> str | None
         )
         parts.append(f"{key}={text}")
     return ";".join(parts)
+
+
+def input_label(parameter: dict[str, Any]) -> str:
+    """The name shown in Onshape's UI (the ID when there is no separate name)."""
+    return str(parameter.get("parameterName") or parameter.get("parameterId") or "")
+
+
+def _lookup(wanted: str, pairs: list[tuple[str, Any]]) -> Any | None:
+    """``pairs`` are (text, target): an exact match first, else a unique case-insensitive one."""
+    for text, target in pairs:
+        if text == wanted:
+            return target
+    folded = [target for text, target in pairs if text.casefold() == wanted.casefold()]
+    return folded[0] if len(folded) == 1 else None
+
+
+def find_input(
+    parameters: list[dict[str, Any]], name: str, *, enum_only: bool = False
+) -> dict[str, Any] | None:
+    """The input called ``name`` - by its ID or by its label."""
+    candidates = [p for p in parameters if not enum_only or is_enum(p)]
+    pairs = [(str(p.get("parameterId")), p) for p in candidates]
+    return _lookup(name, pairs + [(input_label(p), p) for p in candidates])
+
+
+def find_option(parameter: dict[str, Any], wanted: object) -> dict[str, Any] | None:
+    """The option of a list input called ``wanted`` - by its ID or by its label."""
+    options = parameter.get("options") or []
+    pairs = [(str(o.get("option")), o) for o in options]
+    return _lookup(
+        str(wanted), pairs + [(str(o.get("optionName") or o.get("option")), o) for o in options]
+    )
+
+
+def option_label(parameter: dict[str, Any] | None, option_id: object) -> str:
+    option = next(
+        (o for o in (parameter or {}).get("options") or [] if o.get("option") == option_id), None
+    )
+    return str((option or {}).get("optionName") or option_id)
+
+
+def resolve(
+    configuration: Configuration | None, parameters: list[dict[str, Any]] | None
+) -> Configuration:
+    """Translate labels to the IDs Onshape expects: ``{"Configuration": "3Spoke"}`` becomes
+    ``{"List_gfWXlOaT2Zmfyo": "_3Spoke"}``. IDs pass through. Without a definition to check
+    against, the entries are returned unchanged."""
+    if not configuration or not parameters:
+        return dict(configuration or {})
+    resolved: dict[str, str | float | int] = {}
+    for key, value in configuration.items():
+        parameter = find_input(parameters, key)
+        if parameter is None:
+            known = ", ".join(repr(input_label(p)) for p in parameters)
+            raise InputError(
+                f"This element has no configuration input {key!r}. Its inputs: {known} "
+                "(get_configuration lists them with their options)."
+            )
+        if not is_enum(parameter):
+            resolved[parameter["parameterId"]] = value
+            continue
+        option = find_option(parameter, value)
+        if option is None:
+            choices = ", ".join(
+                repr(option_label(parameter, o.get("option")))
+                for o in parameter.get("options") or []
+            )
+            raise InputError(
+                f"Configuration input {input_label(parameter)!r} has no option {value!r}; "
+                f"its options are {choices}."
+            )
+        resolved[parameter["parameterId"]] = option["option"]
+    return resolved
 
 
 def is_enum(parameter: dict[str, Any]) -> bool:
@@ -119,30 +197,40 @@ def configured_parameter(
     ``values`` maps every option to its expression. Onshape rejects inner values that carry
     their own ``parameterId`` (seen live), so they have none.
     """
-    options = [o["option"] for o in input_spec.get("options") or []]
-    unknown = sorted(set(values) - set(options))
-    missing = [o for o in options if o not in values]
+    labels = {
+        o["option"]: o.get("optionName") or o["option"] for o in input_spec.get("options") or []
+    }
+    by_id: dict[str, str] = {}
+    unknown: list[str] = []
+    for key, expression in values.items():  # the caller may name options by label or by ID
+        option = find_option(input_spec, key)
+        if option is None:
+            unknown.append(key)
+        else:
+            by_id[option["option"]] = expression
+    missing = [label for option_id, label in labels.items() if option_id not in by_id]
     if unknown or missing:
         raise InputError(
-            f"Give a value for every option of {input_name!r} ({options}); "
-            f"unknown: {unknown}, missing: {missing}."
+            f"Give a value for every option of {input_name!r} ({list(labels.values())}); "
+            f"unknown: {sorted(unknown)}, missing: {missing}."
         )
+    input_id = input_spec.get("parameterId") or input_name
     return {
         "btType": "BTMParameterConfigured-2222",
         "parameterId": parameter_id,
-        "configurationParameterId": input_name,
+        "configurationParameterId": input_id,
         "values": [
             {
                 "btType": "BTMConfiguredValueByEnum-1923",
-                "enumName": input_spec.get("enumName") or enum_name(input_name),
-                "enumValue": option,
+                "enumName": input_spec.get("enumName") or enum_name(input_id),
+                "enumValue": option_id,
                 "namespace": input_spec.get("namespace", ""),
                 "value": {
                     "btType": "BTMParameterQuantity-147",
                     "isInteger": False,
-                    "expression": values[option],
+                    "expression": by_id[option_id],
                 },
             }
-            for option in options
+            for option_id in labels
         ],
     }

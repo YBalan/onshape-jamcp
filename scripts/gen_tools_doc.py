@@ -47,6 +47,12 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         [
             "create_sketch",
             "extrude",
+            "revolve",
+            "circular_pattern",
+            "linear_pattern",
+            "mirror",
+            "shell",
+            "boolean",
             "fillet",
             "chamfer",
             "update_feature",

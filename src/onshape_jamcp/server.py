@@ -30,7 +30,13 @@ capture_screenshot (visual check; images cost tokens only when screenshot review
 (a nut's hole must be Ø10 for M10, not the tap-drill size) and defaults to internal ANSI \
 threads: pass internalThreads, threadProfile (ISO_STD) and the pitch p explicitly. Check the \
 result by volume, not only by status. Details: docs/threads.md in the repository.
-6. Anything else: onshape_api_request / add_feature / run_featurescript.
+6. Repeat and shape: circular_pattern / linear_pattern / mirror (pass feature_ids - the \
+feature that makes ONE spoke or hole - so the copies merge or cut like it, or part_ids for \
+separate copies), revolve (profile plus a construction-line axis), shell, boolean. Their \
+replies carry `effect` (parts and volume before/after) and a warning when nothing changed: \
+Onshape can accept a feature that does nothing, so read it. Put counts in a variable \
+('#spokes') when they should be configurable.
+7. Anything else: onshape_api_request / add_feature / run_featurescript.
 Defaults for every model, unless the user says otherwise: \
 (a) NAME things - give each part a descriptive name (extrude part_name / rename) and rename a \
 tab that still says "Part Studio N" or "Assembly N"; keep names the user chose. Extrudes are \

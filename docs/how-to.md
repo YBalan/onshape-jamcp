@@ -96,6 +96,48 @@ and `onshape_api_request` only allows `GET`. Great for *"summarize what's in my 
 *"review this model"* sessions. Pair it with an API key that only has the *read* scope for a hard
 guarantee.
 
+## Repeat, mirror, revolve, shell and combine
+
+> *Give this hub 6 spokes.* / *Make a row of 4 ribs 20 mm apart.* / *Mirror the left half.* /
+> *Revolve this profile into a pulley.* / *Hollow this box, open at the top.*
+
+```
+create_sketch + extrude "new"  part_name="Hub"          # the hub
+create_sketch + extrude "add"                           # ONE spoke, merged into the hub -> its feature_id
+get_body_details                                        # the hub's cylindrical face id (type "cylinder")
+circular_pattern(count="#spokes", axis=<cylinder face id>, feature_ids=[<spoke extrude>])
+```
+
+| Tool | Repeats / does | Key inputs |
+|---|---|---|
+| `circular_pattern` | copies around an axis | `count`, `axis`, `angle` (default 360) |
+| `linear_pattern` | copies along a direction; a second direction makes a grid | `count`, `distance` (spacing), `direction`, `count_2` / `distance_2` / `direction_2` |
+| `mirror` | copies across a plane | `plane` (`Top` / `Front` / `Right` or a planar face ID) |
+| `revolve` | turns a sketch region about an axis | `sketch_feature_id`, `axis`, `angle`, `operation` (`new` / `add` / `remove`) |
+| `shell` | hollows a part | `thickness`, `remove_face_ids` (open box) or `hollow_part_ids` (closed void) |
+| `boolean` | joins, cuts or intersects parts | `operation`, `tools`, `targets` (subtract) |
+
+- **What to repeat.** Exactly one of `feature_ids` (the feature that makes one spoke or hole: the
+  copies merge or cut the way it does), `part_ids` (separate copies; use `operation="add"` to merge
+  them into the parts they touch) or `face_ids`. Pattern the *feature* for a wheel's spokes; patterning
+  the whole part with `operation="add"` also works but repeats the hub too. A feature pattern is sent
+  as Onshape's *full* pattern; its "faster" mode fails for a feature merged into a part.
+- **Axis and direction.** The ID of a cylindrical or conical face, of a circular or straight edge
+  (all from `get_body_details`), or `sketch:<feature_id>` for the construction line drawn in that
+  sketch (`create_sketch` with a `line` shape and `construction=true`). Linear patterns also take
+  `x`, `y` or `z`; they run toward +X, +Y and +Z. `revolve` without `axis` uses the construction line of
+  its own sketch. (The construction-line lookup is new and **not yet checked live**; an explicit edge or
+  face ID is the proven route. See [development](development.md#verification-status-read-this-before-trusting-a-tool).)
+- **Counts are variables.** `count="#spokes"` follows the variable (and a configuration that drives
+  it, see [parametric modeling](parametric.md#configurations-m10-or-m18)). A count includes the original.
+- **The reply is the check.** Each call returns `effect` (parts and total volume before and after), the
+  parts it created or removed, and a **warning when the Part Studio did not change**: Onshape accepts
+  some features that do nothing (patterning a *sketch* is one). `verify=false` skips the two
+  measuring requests. Part IDs change when parts merge or split, so call `list_parts` afterwards.
+- **Revolve and shell numbers.** A full revolve of a 10 x 30 mm profile at radius 10 to 20 measured
+  exactly pi x (20^2 - 10^2) x 30 = 28274 mm3; a 40 x 30 x 20 mm box shelled 2 mm with its top face
+  removed measured 7152 mm3 (a closed hollow leaves 9024 mm3, because the top and bottom walls count).
+
 ## Use a custom feature such as Thread Creator
 
 > *Thread the shank of this bolt M10 × 1.5 with ThreadCreator.*
@@ -144,8 +186,8 @@ ThreadCreator options and their defaults) are covered in [Threads and custom fea
 
 ## Do something the tools don't cover
 
-The curated tools cover the common 80%. For revolves, patterns, holes, sweeps, lofts, variables,
-mates and the rest there are three escape hatches, in increasing order of power:
+The curated tools cover the common 80%. For holes, sweeps, lofts, thicken, draft and the rest there
+are three escape hatches, in increasing order of power:
 
 1. **Copy a feature the UI made.** Create the feature once in Onshape's UI (say a revolve), then
    `list_features(feature_id=…)` to read its JSON and `add_feature(feature=…)` to replay it with

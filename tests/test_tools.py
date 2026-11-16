@@ -42,7 +42,7 @@ class TestRegistration:
     async def test_tool_catalog(self, make_server):
         async with Client(make_server()) as client:
             tools = {t.name: t for t in (await client.list_tools()).tools}
-        assert len(tools) == 31
+        assert len(tools) == 37
         assert tools["get_settings"].annotations.read_only_hint is True
         assert tools["list_custom_features"].annotations.read_only_hint is True
         assert tools["delete_feature"].annotations.destructive_hint is True
@@ -69,6 +69,12 @@ class TestRegistration:
             "insert_instance",
             "add_mate",
             "rename",
+            "circular_pattern",
+            "linear_pattern",
+            "mirror",
+            "revolve",
+            "shell",
+            "boolean",
         }
         assert {
             "list_documents",
@@ -801,6 +807,557 @@ class TestConfigurations:
         assert result.is_error and not fake.requests
 
 
+def feature_params(feature):
+    return {p["parameterId"]: p for p in feature["parameters"]}
+
+
+def ids_of(parameter):
+    return parameter["queries"][0]["deterministicIds"]
+
+
+class TestPatterns:
+    @staticmethod
+    def grow(fake, volume=12e-6):
+        fake.after_add = lambda feature: fake.volumes.update({"JHD": volume})
+
+    async def test_circular_pattern_of_a_feature(self, make_server, fake):
+        self.grow(fake)
+        out = (
+            await call(
+                make_server(),
+                "circular_pattern",
+                {**BASE, "count": 6, "axis": "JXA", "feature_ids": ["F010"]},
+            )
+        ).structured_content
+        assert out["status"] == "OK" and out["name"] == "Circular pattern x6"
+        feature = fake.features[0]
+        p = feature_params(feature)
+        assert feature["featureType"] == "circularPattern"
+        assert (p["patternType"]["value"], p["patternType"]["enumName"]) == (
+            "FEATURE",
+            "PatternType",
+        )
+        assert p["instanceFunction"]["btType"] == "BTMParameterFeatureList-1749"
+        assert p["instanceFunction"]["featureIds"] == ["F010"]
+        assert (
+            p["fullFeaturePattern"]["value"] is True
+        )  # the "faster" mode fails on merged features
+        assert ids_of(p["axis"]) == ["JXA"]
+        assert (p["instanceCount"]["expression"], p["instanceCount"]["isInteger"]) == ("6", True)
+        assert p["angle"]["expression"] == "360 deg" and p["equalSpace"]["value"] is True
+        assert "operationType" not in p and "entities" not in p
+        effect = out["effect"]
+        assert effect["parts_before"] == effect["parts_after"] == 1
+        assert effect["volume_before"] == pytest.approx(8000) and effect[
+            "volume_after"
+        ] == pytest.approx(12000)
+        assert "warning" not in out
+
+    async def test_a_pattern_that_changes_nothing_is_flagged(self, make_server, fake):
+        out = (
+            await call(
+                make_server(),
+                "circular_pattern",
+                {**BASE, "count": 3, "axis": "JXA", "part_ids": ["JHD"]},
+            )
+        ).structured_content
+        assert out["status"] == "OK" and "did not change" in out["warning"]
+
+    async def test_a_variable_count_and_a_partial_angle(self, make_server, fake):
+        self.grow(fake)
+        out = (
+            await call(
+                make_server(),
+                "circular_pattern",
+                {**BASE, "count": "#spokes", "axis": "J1", "feature_ids": ["F1"], "angle": 90},
+            )
+        ).structured_content
+        p = feature_params(fake.features[0])
+        assert p["instanceCount"]["expression"] == "#spokes"
+        assert p["angle"]["expression"] == "90 deg"
+        assert out["name"] == "Circular pattern x#spokes over 90 deg"
+
+    async def test_the_axis_can_be_the_construction_line_of_a_sketch(self, make_server, fake):
+        self.grow(fake)
+        await call(
+            make_server(),
+            "circular_pattern",
+            {**BASE, "count": 4, "axis": "sketch:F001", "feature_ids": ["F1"]},
+        )
+        assert ids_of(feature_params(fake.features[0])["axis"]) == ["JGC"]
+        script = json.loads(fake.calls("POST", "featurescript")[-1].content)["script"]
+        assert 'makeId("F001")' in script and "ConstructionObject.YES" in script
+
+    @pytest.mark.parametrize(("lines", "found"), [([], "0"), (["JA", "JB"], "2")])
+    async def test_a_sketch_needs_exactly_one_construction_line(
+        self, make_server, fake, lines, found
+    ):
+        fake.construction_edges = lines
+        result = await call(
+            make_server(),
+            "circular_pattern",
+            {**BASE, "count": 4, "axis": "sketch:F001", "feature_ids": ["F1"]},
+            expect_error=True,
+        )
+        assert f"has {found} construction lines" in text_of(result) and not fake.features
+
+    async def test_parts_are_patterned_into_new_parts_or_merged_into_scope(self, make_server, fake):
+        server = make_server()
+        base = {**BASE, "count": 3, "axis": "J1", "part_ids": ["JHD"]}
+        await call(server, "circular_pattern", base)
+        p = feature_params(fake.features[0])
+        assert p["patternType"]["value"] == "PART" and p["operationType"]["value"] == "NEW"
+        assert ids_of(p["entities"]) == ["JHD"] and "booleanScope" not in p
+        await call(server, "circular_pattern", {**base, "operation": "add", "merge_with": ["JP1"]})
+        p = feature_params(fake.features[1])
+        assert p["operationType"]["value"] == "ADD"
+        assert p["defaultScope"]["value"] is False and ids_of(p["booleanScope"]) == ["JP1"]
+
+    async def test_faces_can_be_patterned(self, make_server, fake):
+        await call(
+            make_server(),
+            "circular_pattern",
+            {**BASE, "count": 3, "axis": "J1", "face_ids": ["JHF"]},
+        )
+        p = feature_params(fake.features[0])
+        assert p["patternType"]["value"] == "FACE" and ids_of(p["faces"]) == ["JHF"]
+
+    @pytest.mark.parametrize(
+        "selection",
+        [{}, {"part_ids": ["A"], "feature_ids": ["F1"]}, {"part_ids": [], "face_ids": []}],
+    )
+    async def test_exactly_one_thing_to_repeat(self, make_server, fake, selection):
+        result = await call(
+            make_server(),
+            "circular_pattern",
+            {**BASE, "count": 3, "axis": "J1", **selection},
+            expect_error=True,
+        )
+        assert "exactly one of part_ids" in text_of(result) and not fake.features
+
+    @pytest.mark.parametrize("count", [1, 0, 2.5, 5000, True])
+    async def test_the_count_must_be_a_sensible_whole_number(self, make_server, fake, count):
+        result = await call(
+            make_server(),
+            "circular_pattern",
+            {**BASE, "count": count, "axis": "J1", "feature_ids": ["F1"]},
+            expect_error=True,
+        )
+        assert result.is_error and not fake.features
+
+    async def test_linear_pattern_in_a_world_direction(self, make_server, fake):
+        self.grow(fake)
+        server = make_server()
+        base = {**BASE, "count": 4, "distance": 20, "feature_ids": ["F1"]}
+        out = (await call(server, "linear_pattern", {**base, "direction": "z"})).structured_content
+        assert out["name"] == "Linear pattern x4 @ 20 mm"
+        p = feature_params(fake.features[0])
+        assert fake.features[0]["featureType"] == "linearPattern"
+        assert ids_of(p["directionOne"]) == ["JDC"] and p["oppositeDirection"]["value"] is False
+        assert p["distance"]["expression"] == "20 mm"
+        assert (p["instanceCount"]["expression"], p["instanceCount"]["isInteger"]) == ("4", True)
+        assert "hasSecondDir" not in p
+        # +y is the Front plane's normal reversed; asking for "opposite" flips it back
+        await call(server, "linear_pattern", {**base, "direction": "y"})
+        p = feature_params(fake.features[1])
+        assert ids_of(p["directionOne"]) == ["JCC"] and p["oppositeDirection"]["value"] is True
+        await call(server, "linear_pattern", {**base, "direction": "y", "opposite_direction": True})
+        assert feature_params(fake.features[2])["oppositeDirection"]["value"] is False
+
+    async def test_linear_pattern_grid_and_edge_direction(self, make_server, fake):
+        self.grow(fake)
+        out = (
+            await call(
+                make_server(),
+                "linear_pattern",
+                {
+                    **BASE,
+                    "count": 4,
+                    "distance": "#pitch",
+                    "direction": "JEDGE",
+                    "part_ids": ["JHD"],
+                    "count_2": 3,
+                    "distance_2": 15,
+                    "direction_2": "x",
+                },
+            )
+        ).structured_content
+        p = feature_params(fake.features[0])
+        assert ids_of(p["directionOne"]) == ["JEDGE"] and p["distance"]["expression"] == "#pitch"
+        assert p["hasSecondDir"]["value"] is True and ids_of(p["directionTwo"]) == ["JEC"]
+        assert p["distanceTwo"]["expression"] == "15 mm"
+        assert (p["instanceCountTwo"]["expression"], p["instanceCountTwo"]["isInteger"]) == (
+            "3",
+            True,
+        )
+        assert out["name"] == "Linear pattern x4 @ #pitch, x3 @ 15 mm"
+
+    async def test_a_second_direction_needs_all_three_values(self, make_server, fake):
+        result = await call(
+            make_server(),
+            "linear_pattern",
+            {
+                **BASE,
+                "count": 4,
+                "distance": 20,
+                "direction": "x",
+                "feature_ids": ["F1"],
+                "count_2": 3,
+            },
+            expect_error=True,
+        )
+        assert "second direction needs" in text_of(result) and not fake.features
+
+    async def test_mirror_across_an_origin_plane_or_a_face(self, make_server, fake):
+        self.grow(fake)
+        server = make_server()
+        out = (
+            await call(server, "mirror", {**BASE, "plane": "Right", "part_ids": ["JHD"]})
+        ).structured_content
+        assert out["name"] == "Mirror (Right)"
+        p = feature_params(fake.features[0])
+        assert fake.features[0]["featureType"] == "mirror"
+        assert (p["patternType"]["value"], p["patternType"]["enumName"]) == ("PART", "MirrorType")
+        assert ids_of(p["mirrorPlane"]) == ["JEC"] and p["operationType"]["value"] == "NEW"
+        await call(server, "mirror", {**BASE, "plane": "JHF", "feature_ids": ["F1"]})
+        p = feature_params(fake.features[1])
+        assert ids_of(p["mirrorPlane"]) == ["JHF"] and p["patternType"]["value"] == "FEATURE"
+
+    async def test_verify_false_saves_the_measuring_requests(self, make_server, fake):
+        out = (
+            await call(
+                make_server(),
+                "mirror",
+                {**BASE, "plane": "Top", "part_ids": ["JHD"], "verify": False},
+            )
+        ).structured_content
+        assert out["status"] == "OK" and "effect" not in out
+        assert not fake.calls("GET", "massproperties") and len(fake.features) == 1
+
+    async def test_a_failed_measurement_does_not_lose_the_feature(self, make_server, fake):
+        fake.fail_next = (500, {"message": "Internal error"})  # the first (measuring) request
+        args = {**BASE, "workspace_id": WID, "plane": "JHF", "part_ids": ["JHD"]}
+        out = (await call(make_server(), "mirror", args)).structured_content
+        assert out["status"] == "OK" and "effect" not in out and len(fake.features) == 1
+
+    async def test_new_parts_from_a_pattern_are_listed_with_a_naming_note(self, make_server, fake):
+        def add_copy(feature):
+            fake.parts.append({"partId": "JCOPY", "name": "Part 2", "bodyType": "solid"})
+            fake.volumes["JCOPY"] = 8e-6
+
+        fake.after_add = add_copy
+        out = (
+            await call(make_server(), "mirror", {**BASE, "plane": "Top", "part_ids": ["JHD"]})
+        ).structured_content
+        assert out["parts_created"] == [{"part_id": "JCOPY", "name": "Part 2"}]
+        assert "placeholder name" in out["note"] and "warning" not in out
+        assert out["effect"]["parts_before"] == 1 and out["effect"]["parts_after"] == 2
+
+
+class TestShaping:
+    async def test_revolve_a_profile_around_its_construction_line(self, make_server, fake):
+        out = (
+            await call(
+                make_server(),
+                "revolve",
+                {**BASE, "sketch_feature_id": "F001", "part_name": "Pulley"},
+            )
+        ).structured_content
+        assert out["status"] == "OK" and out["name"] == "Revolve 360 deg"
+        feature = fake.features[0]
+        p = feature_params(feature)
+        assert feature["featureType"] == "revolve"
+        assert p["entities"]["queries"][0]["featureId"] == "F001"
+        assert p["operationType"]["value"] == "NEW" and ids_of(p["axis"]) == ["JGC"]
+        assert p["fullRevolve"]["value"] is True and "angle" not in p
+        assert out["parts_created"] == [{"part_id": "JP1", "name": "Pulley"}]
+        assert fake.parts[-1]["name"] == "Pulley" and "warning" not in out
+
+    async def test_a_partial_revolve_with_an_explicit_axis(self, make_server, fake):
+        out = (
+            await call(
+                make_server(),
+                "revolve",
+                {
+                    **BASE,
+                    "sketch_feature_id": "F001",
+                    "axis": "JEDGE",
+                    "angle": 90,
+                    "symmetric": True,
+                    "operation": "remove",
+                    "only_parts": ["JHD"],
+                },
+            )
+        ).structured_content
+        p = feature_params(fake.features[0])
+        assert ids_of(p["axis"]) == ["JEDGE"]
+        assert p["fullRevolve"]["value"] is False and p["angle"]["expression"] == "90 deg"
+        assert p["symmetric"]["value"] is True
+        assert p["defaultScope"]["value"] is False and ids_of(p["booleanScope"]) == ["JHD"]
+        assert out["name"] == "Revolve 90 deg"
+        assert not fake.calls("POST", "featurescript")  # an explicit ID needs no lookup
+
+    async def test_an_unscoped_intersect_is_refused_when_there_are_several_parts(
+        self, make_server, fake
+    ):
+        fake.parts.append({"partId": "JB", "name": "Part 2", "bodyType": "solid"})
+        result = await call(
+            make_server(),
+            "revolve",
+            {**BASE, "sketch_feature_id": "F001", "operation": "intersect"},
+            expect_error=True,
+        )
+        assert "only_parts" in text_of(result) and not fake.features
+
+    async def test_shell_opens_faces_or_hollows_parts(self, make_server, fake):
+        fake.after_add = lambda feature: fake.volumes.update({"JHD": 3e-6})
+        server = make_server()
+        out = (
+            await call(server, "shell", {**BASE, "thickness": 2, "remove_face_ids": ["JHF"]})
+        ).structured_content
+        assert out["name"] == "Shell 2 mm" and out["effect"]["volume_after"] == pytest.approx(3000)
+        p = feature_params(fake.features[0])
+        assert fake.features[0]["featureType"] == "shell"
+        assert p["isHollow"]["value"] is False and ids_of(p["entities"]) == ["JHF"]
+        assert p["thickness"]["expression"] == "2 mm" and "parts" not in p
+        await call(
+            server,
+            "shell",
+            {**BASE, "thickness": "#wall", "hollow_part_ids": ["JHD"], "opposite_direction": True},
+        )
+        p = feature_params(fake.features[1])
+        assert p["isHollow"]["value"] is True and ids_of(p["parts"]) == ["JHD"]
+        assert p["thickness"]["expression"] == "#wall" and p["oppositeDirection"]["value"] is True
+
+    @pytest.mark.parametrize(
+        "selection", [{}, {"remove_face_ids": ["F"], "hollow_part_ids": ["P"]}]
+    )
+    async def test_shell_needs_exactly_one_selection(self, make_server, fake, selection):
+        result = await call(
+            make_server(), "shell", {**BASE, "thickness": 2, **selection}, expect_error=True
+        )
+        assert "exactly one of remove_face_ids" in text_of(result) and not fake.features
+
+    async def test_boolean_union_subtract_intersect(self, make_server, fake):
+        fake.volumes["JB"] = 2e-6
+        server = make_server()
+
+        def merge(feature):
+            fake.volumes.pop("JB", None)
+
+        fake.after_add = merge
+        out = (
+            await call(server, "boolean", {**BASE, "operation": "union", "tools": ["JHD", "JB"]})
+        ).structured_content
+        assert out["name"] == "Union" and out["parts_removed"] == ["JB"]
+        p = feature_params(fake.features[0])
+        assert fake.features[0]["featureType"] == "booleanBodies"
+        assert p["operationType"] == {
+            "btType": "BTMParameterEnum-145",
+            "enumName": "BooleanOperationType",
+            "value": "UNION",
+            "parameterId": "operationType",
+        }
+        assert ids_of(p["tools"]) == ["JHD", "JB"] and "targets" not in p
+
+        fake.after_add = None
+        out = (
+            await call(
+                server,
+                "boolean",
+                {
+                    **BASE,
+                    "operation": "subtract",
+                    "targets": ["JHD"],
+                    "tools": ["JB"],
+                    "keep_tools": True,
+                },
+            )
+        ).structured_content
+        p = feature_params(fake.features[1])
+        assert out["name"] == "Subtract" and p["operationType"]["value"] == "SUBTRACTION"
+        assert ids_of(p["targets"]) == ["JHD"] and ids_of(p["tools"]) == ["JB"]
+        assert p["keepTools"]["value"] is True
+        await call(server, "boolean", {**BASE, "operation": "intersect", "tools": ["JHD", "JB"]})
+        assert feature_params(fake.features[2])["operationType"]["value"] == "INTERSECTION"
+
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            ({"operation": "subtract", "tools": ["B"]}, "needs `targets`"),
+            ({"operation": "union", "tools": ["A"]}, "at least two parts"),
+            (
+                {"operation": "union", "tools": ["A", "B"], "targets": ["C"]},
+                "only used by 'subtract'",
+            ),
+        ],
+    )
+    async def test_boolean_arguments_are_checked(self, make_server, fake, args, message):
+        result = await call(make_server(), "boolean", {**BASE, **args}, expect_error=True)
+        assert message in text_of(result) and not fake.features
+
+
+class TestUiMadeConfigurations:
+    """Inputs made in Onshape's own UI have a generated ID that differs from the label shown there
+    (and options likewise). This is the shape read from a real hand-made 3Spoke / 6Spoke input."""
+
+    LIST_ID, LENGTH_ID = "List_gfWXlOaT2Zmfyo", "Length_abc123"
+    LIST = {
+        "btType": "BTMConfigurationParameterEnum-105",
+        "parameterId": LIST_ID,
+        "parameterName": "Configuration",
+        "enumName": f"{LIST_ID}_conf",
+        "namespace": "",
+        "defaultValue": "Default",
+        "options": [
+            {"btType": "BTMEnumOption-592", "option": "Default", "optionName": "Default"},
+            {"btType": "BTMEnumOption-592", "option": "_3Spoke", "optionName": "3Spoke"},
+            {"btType": "BTMEnumOption-592", "option": "_6Spoke", "optionName": "6Spoke"},
+        ],
+    }
+    LENGTH = {
+        "btType": "BTMConfigurationParameterQuantity-1826",
+        "parameterId": LENGTH_ID,
+        "parameterName": "Length",
+        "quantityType": "LENGTH",
+        "rangeAndDefault": {"minValue": 0.01, "maxValue": 0.2, "defaultValue": 0.04},
+    }
+
+    def arrange(self, fake):
+        fake.config_params = [self.LIST, self.LENGTH]
+
+    async def sent_configuration(self, server, fake, configuration):
+        await call(server, "get_part_properties", {**BASE, "configuration": configuration})
+        return fake.calls("GET", "boundingboxes")[-1].url.params["configuration"]
+
+    async def test_inputs_are_listed_by_label_with_their_ids(self, make_server, fake):
+        self.arrange(fake)
+        out = (await call(make_server(), "get_configuration", BASE)).structured_content
+        listed, length = out["inputs"]
+        assert listed == {
+            "name": "Configuration",
+            "id": self.LIST_ID,
+            "type": "list",
+            "options": ["Default", "3Spoke", "6Spoke"],
+            "default": "Default",
+            "option_ids": {"Default": "Default", "3Spoke": "_3Spoke", "6Spoke": "_6Spoke"},
+        }
+        assert (length["name"], length["id"], length["type"]) == (
+            "Length",
+            self.LENGTH_ID,
+            "length",
+        )
+        assert length["default"] == pytest.approx(40)
+
+    async def test_labels_and_ids_both_reach_onshape_as_ids(self, make_server, fake):
+        self.arrange(fake)
+        server = make_server()
+        by_label = await self.sent_configuration(
+            server, fake, {"Configuration": "3Spoke", "Length": 40}
+        )
+        assert by_label == f"{self.LIST_ID}=_3Spoke;{self.LENGTH_ID}=40 mm"
+        by_id = await self.sent_configuration(server, fake, {self.LIST_ID: "_6Spoke"})
+        assert by_id == f"{self.LIST_ID}=_6Spoke"
+        assert await self.sent_configuration(server, fake, {"configuration": "6SPOKE"}) == by_id
+
+    @pytest.mark.parametrize(
+        ("configuration", "message"),
+        [
+            ({"Colour": "red"}, r"no configuration input 'Colour'.*'Configuration', 'Length'"),
+            ({"Configuration": "9Spoke"}, r"no option '9Spoke'.*'Default', '3Spoke', '6Spoke'"),
+        ],
+    )
+    async def test_unknown_names_are_explained_and_nothing_is_measured(
+        self, make_server, fake, configuration, message
+    ):
+        self.arrange(fake)
+        result = await call(
+            make_server(),
+            "get_part_properties",
+            {**BASE, "configuration": configuration},
+            expect_error=True,
+        )
+        assert re.search(message, text_of(result))
+        assert not fake.calls("GET", "boundingboxes")
+
+    async def test_the_definition_is_read_once_for_several_calls(self, make_server, fake):
+        self.arrange(fake)
+        server = make_server()
+        for option in ("3Spoke", "6Spoke", "Default"):
+            await self.sent_configuration(server, fake, {"Configuration": option})
+        assert len(fake.calls("GET", "/configuration")) == 1
+
+    async def test_screenshots_and_body_details_resolve_names_too(self, make_server, fake):
+        self.arrange(fake)
+        server = make_server()
+        cfg = {"configuration": {"Configuration": "6Spoke"}}
+        await call(server, "get_body_details", {**BASE, **cfg})
+        await call(server, "capture_screenshot", {**BASE, **cfg})
+        for pattern in ("bodydetails", "shadedviews"):
+            sent = fake.calls("GET", pattern)[0].url.params["configuration"]
+            assert sent == f"{self.LIST_ID}=_6Spoke", pattern
+
+    async def test_an_instance_is_inserted_in_the_variant_named_by_label(self, make_server, fake):
+        self.arrange(fake)
+        await call(
+            make_server(),
+            "insert_instance",
+            {
+                "document_id": DID,
+                "assembly_id": AID,
+                "source_element_id": EID,
+                "part_id": "JHD",
+                "configuration": {"Configuration": "6Spoke"},
+            },
+        )
+        assert fake.inserted[-1]["configuration"] == f"{self.LIST_ID}=_6Spoke"
+
+    async def test_a_variable_can_depend_on_an_input_made_in_the_ui(self, make_server, fake):
+        self.arrange(fake)
+        server = make_server()
+        out = (
+            await call(
+                server,
+                "set_variable",
+                {
+                    **BASE,
+                    "name": "spokes",
+                    "kind": "number",
+                    "by_option": {"Configuration": {"Default": 0, "3Spoke": 3, "_6Spoke": 6}},
+                },
+            )
+        ).structured_content
+        assert out["status"] == "OK"
+        value = next(p for p in fake.features[0]["parameters"] if p["parameterId"] == "numberValue")
+        assert value["configurationParameterId"] == self.LIST_ID  # the ID, not the label
+        inner = {v["enumValue"]: v for v in value["values"]}
+        assert set(inner) == {"Default", "_3Spoke", "_6Spoke"}
+        assert inner["_6Spoke"]["value"]["expression"] == "6"
+        assert inner["_3Spoke"]["enumName"] == f"{self.LIST_ID}_conf"
+        listed = (await call(server, "list_variables", BASE)).structured_content["variables"]
+        assert listed[0]["configured_by"] == "Configuration"
+        assert listed[0]["by_option"] == {"Default": "0", "3Spoke": "3", "6Spoke": "6"}
+
+    async def test_a_missing_option_value_names_the_labels(self, make_server, fake):
+        self.arrange(fake)
+        result = await call(
+            make_server(),
+            "set_variable",
+            {**BASE, "name": "n", "kind": "number", "by_option": {"Configuration": {"3Spoke": 3}}},
+            expect_error=True,
+        )
+        assert "missing: ['Default', '6Spoke']" in text_of(result) and not fake.features
+
+    async def test_replacing_an_input_by_its_label(self, make_server, fake):
+        self.arrange(fake)
+        await call(
+            make_server(),
+            "set_configuration_input",
+            {**BASE, "name": "Configuration", "kind": "list", "options": ["A", "B"]},
+        )
+        assert [p["parameterId"] for p in fake.config_params] == [self.LENGTH_ID, "Configuration"]
+
+
 class TestVariables:
     @staticmethod
     def values(feature):
@@ -1213,6 +1770,26 @@ class TestInspection:
         assert part["volume"] == pytest.approx(8000.0)  # 8e-6 m^3 -> mm^3
         assert part["centroid"] == [20.0, 10.0, 5.0]
         assert part["mass_kg"] == 0.5
+
+    async def test_each_part_is_measured_separately_with_a_total(self, make_server, fake):
+        """Onshape adds all parts up as ONE body unless massAsGroup=false (seen live: two cubes
+        reported as a single 16000 mm^3 'part')."""
+        fake.volumes = {"JHD": 8e-6, "JB": 2e-6}
+        data = (
+            await call(make_server(), "get_part_properties", {**BASE, "tight": False})
+        ).structured_content
+        assert [p["part_id"] for p in data["parts"]] == ["JHD", "JB"]
+        assert [round(p["volume"]) for p in data["parts"]] == [8000, 2000]
+        assert data["total_volume"] == pytest.approx(10000)
+        assert fake.calls("GET", "massproperties")[-1].url.params["massAsGroup"] == "false"
+        # one part: nothing to add up, and the per-part endpoint has no such option
+        fake.volumes = {"JHD": 8e-6}
+        single = (
+            await call(make_server(), "get_part_properties", {**BASE, "tight": False})
+        ).structured_content
+        assert "total_volume" not in single
+        await call(make_server(), "get_part_properties", {**BASE, "part_id": "JHD", "tight": False})
+        assert "massAsGroup" not in fake.calls("GET", "massproperties")[-1].url.params
 
     async def test_part_properties_use_the_tight_box_unless_asked_not_to(self, make_server, fake):
         server = make_server()
