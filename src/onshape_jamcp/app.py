@@ -12,6 +12,10 @@ from .config import Settings
 from .errors import ConfigError, InputError, OnshapeError
 from .units import UnitSystem
 
+#: World directions for a linear pattern: the origin plane whose normal points along the axis,
+#: and whether that normal has to be flipped to point along +axis (checked live).
+WORLD_DIRECTIONS = {"x": ("Right", False), "y": ("Front", True), "z": ("Top", False)}
+
 
 class App:
     """Owns the lazily created :class:`OnshapeClient` and caches stable lookups."""
@@ -139,6 +143,105 @@ class App:
         except OnshapeError:
             parameters = []  # cannot check the names: send them as given
         return configurations.encode(configurations.resolve(configuration, parameters), self.units)
+
+    async def volumes(
+        self, document_id: str, workspace_id: str, element_id: str
+    ) -> dict[str, float]:
+        """Part ID -> volume (m^3) of every part: a cheap snapshot to see what a feature changed."""
+        # massAsGroup defaults to true: all parts as ONE aggregated body; false: one entry each.
+        mass = await self.client.get(
+            f"/partstudios/d/{q(document_id)}/w/{q(workspace_id)}/e/{q(element_id)}/massproperties",
+            {"massAsGroup": False},
+        )
+        bodies = mass.get("bodies") if isinstance(mass, dict) else None
+        out: dict[str, float] = {}
+        for part_id, info in (bodies or {}).items():
+            volume = info.get("volume") if isinstance(info, dict) else None
+            number = volume[0] if isinstance(volume, list) and volume else volume
+            if isinstance(number, int | float) and not isinstance(number, bool):
+                out[part_id] = float(number)
+        return out
+
+    async def name_new_parts(
+        self,
+        document_id: str,
+        workspace_id: str,
+        element_id: str,
+        before_ids: set[Any],
+        part_name: str | None,
+    ) -> tuple[list[dict[str, Any]], str | None]:
+        """The parts that appeared since ``before_ids`` (named ``part_name`` when given) and a
+        note when one still has a placeholder name."""
+        after = await self.parts(document_id, workspace_id, element_id)
+        created = [p for p in after if p.get("partId") not in before_ids]
+        for index, part in enumerate(created, start=1):
+            if part_name:
+                new_name = part_name if len(created) == 1 else f"{part_name} {index}"
+                await self.rename(
+                    document_id, workspace_id, element_id, new_name, part.get("partId")
+                )
+                part["name"] = new_name
+        listed = [{"part_id": p.get("partId"), "name": p.get("name")} for p in created]
+        note = None
+        if any(names.is_default_part_name(p.get("name")) for p in created):
+            note = (
+                "The new part still has a placeholder name: give it a descriptive one with "
+                "rename (or part_name)."
+            )
+        return listed, note
+
+    async def construction_line_id(
+        self, document_id: str, workspace_id: str, element_id: str, sketch_feature_id: str
+    ) -> str:
+        """The ID of the one construction line in a sketch (an axis for revolve and patterns)."""
+        try:
+            script = fs.construction_edge_ids_script(sketch_feature_id)
+        except ValueError:
+            raise InputError(f"{sketch_feature_id!r} is not a feature ID.") from None
+        response = await self.evaluate_featurescript(document_id, workspace_id, element_id, script)
+        found = fs.unwrap(response.get("result"))
+        ids = [i for i in found if isinstance(i, str) and i] if isinstance(found, list) else []
+        if len(ids) != 1:
+            raise InputError(
+                f"Sketch {sketch_feature_id} has {len(ids)} construction lines; it needs exactly "
+                "one to serve as the axis (create_sketch with a `line` shape and "
+                "construction=true), or pass the ID of an edge or cylindrical face instead."
+            )
+        return ids[0]
+
+    async def reference_id(
+        self,
+        document_id: str,
+        workspace_id: str,
+        element_id: str,
+        value: str,
+        *,
+        what: str = "axis",
+    ) -> str:
+        """An entity ID as given, or - for ``sketch:<feature_id>`` - the construction line of
+        that sketch."""
+        text = value.strip()
+        if not text:
+            raise InputError(f"{what} must not be empty.")
+        if text.lower().startswith("sketch:"):
+            return await self.construction_line_id(
+                document_id, workspace_id, element_id, text.split(":", 1)[1].strip()
+            )
+        return text
+
+    async def direction(
+        self, document_id: str, workspace_id: str, element_id: str, value: str
+    ) -> tuple[str, bool]:
+        """(entity ID, flip) for a pattern direction: 'x' / 'y' / 'z' (the world axes, through the
+        origin planes' normals), an edge / planar face ID, or ``sketch:<feature_id>``."""
+        key = value.strip().lower()
+        if key in WORLD_DIRECTIONS:
+            plane, flip = WORLD_DIRECTIONS[key]
+            return await self.plane_id(document_id, workspace_id, element_id, plane), flip
+        return (
+            await self.reference_id(document_id, workspace_id, element_id, value, what="direction"),
+            False,
+        )
 
     async def variables(self, document_id: str, workspace_id: str, element_id: str) -> list[dict]:
         """The Part Studio's ``assignVariable`` features: name, kind, expression and raw feature."""

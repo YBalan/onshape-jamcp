@@ -63,6 +63,11 @@ class FakeOnshape:
         self.shaded_calls: list[dict[str, str]] = []
         self.translation_polls = 0
         self.anonymous_session = False
+        self.volumes: dict[str, float] = {"JHD": 8e-6}  # part ID -> volume (m^3)
+        self.construction_edges: list[str] = [
+            "JGC"
+        ]  # what a sketch's construction-line query finds
+        self.after_add: Any = None  # test hook, called with each feature that is added
         self.part_studio_specs: list[dict[str, Any]] = [STANDARD_SPEC, THREAD_SPEC]
         self.studio_specs: list[dict[str, Any]] = [THREAD_SPEC]
         self.parts: list[dict[str, Any]] = [
@@ -178,6 +183,8 @@ class FakeOnshape:
                         }
                     }
                 )
+            if "qConstructionFilter" in script:  # the construction line(s) of a sketch
+                return self._json({"result": _fs_value_array(self.construction_edges)})
             ids = {"Top": "JDC", "Front": "JCC", "Right": "JEC"}  # Top=JDC seen on live Onshape
             for name, plane_id in ids.items():
                 if f'makeId("{name}")' in script:
@@ -268,13 +275,14 @@ class FakeOnshape:
             return self._json(
                 {
                     "bodies": {
-                        "JHD": {
+                        part_id: {
                             "mass": [0.5, 0.4, 0.6],
-                            "volume": [8e-6, 7e-6, 9e-6],
+                            "volume": [v, v * 0.875, v * 1.125],
                             "periphery": [0.0032, 0, 0],
                             "hasMass": True,
                             "centroid": [0.02, 0.01, 0.005],
                         }
+                        for part_id, v in self.volumes.items()
                     }
                 }
             )
@@ -412,18 +420,18 @@ class FakeOnshape:
         self._counter += 1
         stored = {**feature, "featureId": f"F{self._counter:03d}"}
         self.features.append(stored)
-        is_new_extrude = feature.get("featureType") == "extrude" and any(
+        is_new_extrude = feature.get("featureType") in ("extrude", "revolve") and any(
             p.get("parameterId") == "operationType" and p.get("value") == "NEW"
             for p in feature.get("parameters") or []
         )
         if is_new_extrude:  # a new body becomes a part with Onshape's placeholder name
+            part_id = f"JP{len(self.parts)}"
             self.parts.append(
-                {
-                    "partId": f"JP{len(self.parts)}",
-                    "name": f"Part {len(self.parts) + 1}",
-                    "bodyType": "solid",
-                }
+                {"partId": part_id, "name": f"Part {len(self.parts) + 1}", "bodyType": "solid"}
             )
+            self.volumes[part_id] = 1e-6
+        if self.after_add:
+            self.after_add(stored)
         status = self.states.get(stored["featureId"], "OK")
         return self._json({"feature": stored, "featureState": {"featureStatus": status}})
 

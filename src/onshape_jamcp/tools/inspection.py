@@ -166,7 +166,12 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         if part_id:
             base = f"/parts/d/{q(document_id)}/w/{q(wid)}/e/{q(element_id)}/partid/{q(part_id)}"
         bbox = await app.client.get(f"{base}/boundingboxes", {"configuration": cfg})
-        mass = await app.client.get(f"{base}/massproperties", {"configuration": cfg})
+        # Onshape evaluates all parts as ONE aggregated body unless told otherwise (massAsGroup
+        # defaults to true), which hid the individual parts: ask for one entry per part.
+        mass = await app.client.get(
+            f"{base}/massproperties",
+            {"configuration": cfg, "massAsGroup": None if part_id else False},
+        )
 
         lows = [bbox.get(k) for k in ("lowX", "lowY", "lowZ")]
         highs = [bbox.get(k) for k in ("highX", "highY", "highZ")]
@@ -215,6 +220,9 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
                 entry["centroid"] = units.point_from_meters(centroid)
             parts.append(entry)
         result["parts"] = parts
+        volumes = [p["volume"] for p in parts if "volume" in p]
+        if len(volumes) > 1:
+            result["total_volume"] = sum(volumes)
         result["volume_unit"] = units.volume_unit
         result["area_unit"] = units.area_unit
         return result

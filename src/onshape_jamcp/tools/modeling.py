@@ -190,21 +190,12 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         )
         result = await add(document_id, element_id, wid, body)
         if before is not None:
-            after = await app.parts(document_id, wid, element_id)
-            created = [p for p in after if p.get("partId") not in before]
-            for index, part in enumerate(created, start=1):
-                if part_name:
-                    new_name = part_name if len(created) == 1 else f"{part_name} {index}"
-                    await app.rename(document_id, wid, element_id, new_name, part.get("partId"))
-                    part["name"] = new_name
-            result["parts_created"] = [
-                {"part_id": p.get("partId"), "name": p.get("name")} for p in created
-            ]
-            if any(names.is_default_part_name(p.get("name")) for p in created):
-                result["note"] = (
-                    "The new part still has a placeholder name: give it a descriptive one with "
-                    "rename (or part_name)."
-                )
+            created, note = await app.name_new_parts(
+                document_id, wid, element_id, before, part_name
+            )
+            result["parts_created"] = created
+            if note:
+                result["note"] = note
         return result
 
     @tool(title="Fillet edges", writes=True)

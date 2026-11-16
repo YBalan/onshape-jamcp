@@ -73,6 +73,11 @@ set_variable(name="nut_h",   by_option={"Size": {"M10": 8.4, "M18": 15.8}})
 (ISO 4017 / 4032 coarse values.) A number input such as `Length` can be used directly as `#Length`.
 Every option of a list input needs a value. Then model as above with `#d`, `#head_af`, … .
 
+A count can be configured too: a `number` variable (`set_variable(name="spokes", kind="number", by_option=...)`)
+used as `count="#spokes"` in `circular_pattern` makes the number of spokes follow the selected variant.
+A plain variable driving the count was checked live (3 and 6 spokes); a variable configured *by an
+input* driving it was not.
+
 Look at one variant without changing the default: `get_part_properties`, `get_body_details` and
 `capture_screenshot` take `configuration={"Size": "M18"}`; `insert_instance` takes the same to put
 that variant into an assembly. `get_configuration` lists the inputs.
@@ -159,6 +164,8 @@ does.
 
 Onshape limits **each endpoint separately per day**. Seen live on a free plan: after many test runs,
 `GET .../partstudios/.../features` answered `429` with `Retry-After: 80721` (about 22 hours) while every
-other endpoint still allowed 3000 calls. The server now stops retrying such a limit and says when it
+other endpoint still allowed 3000 calls. `POST .../featurescript` ran out the same way after a long
+test session (every origin-plane lookup, `create_sketch` on a named plane, tight bounding boxes and
+variable evaluation use it); plane IDs are cached only inside one running server. The server now stops retrying such a limit and says when it
 resets. To use fewer of those calls: do not poll `list_features` after every step (modeling tools
 already report each feature's status), and prefer one `list_variables` over several reads.

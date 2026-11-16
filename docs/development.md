@@ -187,6 +187,24 @@ the geometry), polygon sketches, `qContainsPoint` edge selection through `run_fe
 The smoke test only checks that `list_custom_features` runs; to also try a real script pass a
 Feature Studio version URL: `uv run python scripts/smoke_test.py --custom-feature-studio <url>`.
 
+**Patterns, mirror, revolve, shell, boolean (2026-11-16, verified live by volume).** Specs came from
+`GET .../featurespecs` (not rate limited); every tool ran through the real MCP code against Onshape
+on geometry with a known answer:
+
+| Area | Result |
+|---|---|
+| Circular pattern | A feature pattern of a spoke extrude around the hub's cylinder face: 3 spokes = hub + 3 x one spoke exactly (17979.92 mm3), and `count="#spokes"` with a variable of 6 gave 23393.46 mm3. **A feature pattern needs `fullFeaturePattern=true`**: without it (Onshape's "faster" mode) the same request answered `ERROR` for a feature merged into a part, and for a hub extrude too; a *separate* new-part block was patterned either way. A pattern of a part with `operation=add` also gave hub + 3 spokes. A circular edge works as the axis as well. A pattern of a *sketch* feature is accepted (`OK`) and changes nothing (caught by `effect`). |
+| Linear pattern | Origin planes as the direction run along their normals: Right +X, Top +Z, **Front -Y** (so `y` flips it). Edges and planar faces of the part work too. Rows (x4 = 4x volume, extents exact) and a 3 x 2 grid. |
+| Mirror | Across Right and Front, for parts (volume x2, bounding box exact) and for a feature (`OK`, volume +1804.5 mm3). |
+| Revolve | Full (28274.33 mm3 = pi x (20^2 - 10^2) x 30), 90 degrees (a quarter, 7068.58) and `remove` (a groove, 1256.64) around a cylinder face as the axis. The part is named by `part_name`. |
+| Shell | Open top: 7152 mm3 = 24000 - 36 x 26 x 18. Closed hollow: 9024 mm3 = 24000 - 36 x 26 x 16 (my first expectation, 7152, was wrong). |
+| Boolean | Two 20 mm cubes overlapping by 10 mm: union 12000, subtract 4000, intersect 4000 mm3; the reply lists the parts that disappeared. |
+| Found while testing | `massproperties` evaluates **all parts as one body** unless `massAsGroup=false`: two cubes showed as one 16000 mm3 part, and part counts never rose. `get_part_properties` and the new `effect` now ask for one entry per part. Origin planes: Top = `JDC`, Front = `JCC`, Right = `JEC`. |
+| Not verified | The `sketch:<feature_id>` lookup (a FeatureScript query for the construction lines of a sketch) and `revolve` without `axis`, because `POST .../featurescript` hit its daily limit during the session; the named directions `x`/`y`/`z` and plane names through that lookup (the IDs they resolve to were checked); a count driven by a variable configured *by an input*; `face_ids` patterns; `merge_with` with a real merge; a second-direction feature pattern; `keep_tools`. |
+
+**What to re-run once the limits are gone:** [re-test checklist](retest-after-limits.md) (every item
+marked "Not verified" in the tables here, with the exact calls and the expected numbers).
+
 **OAuth (2026-11-16, verified live).** Implemented from Onshape's OAuth documentation and tested
 against a simulated token server (including that a forged callback is ignored and that breaking the
 host check is caught), then run against a real OAuth application:

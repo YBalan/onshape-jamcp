@@ -20,7 +20,7 @@ screenshots** (which costs tokens) or not.
 | 📏 **Metric by default** | Every length you send or receive is in **mm**. Set `ONSHAPE_UNITS=imperial` for inches. Angles are always degrees. |
 | 👁️ **Screenshot review toggle** | `ONSHAPE_SCREENSHOT_REVIEW=true` sends renders to the model so it can *see* its work (≈ 640 tokens per 800×600 image). `false` only saves them to disk - zero image tokens. Override per call with `review`. |
 | 🔒 **Read-only mode** | `ONSHAPE_READ_ONLY=true` removes every tool that can modify a document. |
-| 🧰 **31 focused tools** | Documents, sketch → extrude → fillet/chamfer, edit parameters, measure, faces/edges, assemblies, screenshots, STEP/STL export - custom Feature Studio features such as Thread Creator, variables, configurations, part naming, plus escape hatches (raw feature JSON, FeatureScript, any REST endpoint). |
+| 🧰 **37 focused tools** | Documents, sketch → extrude / revolve → patterns, mirror, shell, boolean, fillet/chamfer, edit parameters, measure, faces/edges, assemblies, screenshots, STEP/STL export - custom Feature Studio features such as Thread Creator, variables, configurations, part naming, plus escape hatches (raw feature JSON, FeatureScript, any REST endpoint). |
 | 🧪 **Honest feedback loop** | Every modeling tool reports the feature's health (`OK`/`WARNING`/`ERROR`) so the model notices failures instead of piling more features on top. |
 
 ## Quick start
@@ -95,7 +95,7 @@ Everything else (image size, output folder, timeout, auth mode, API version, log
 | Server | `get_settings`, `whoami` |
 | Documents | `list_documents`, `get_document`, `create_document`, `create_element` |
 | Inspect | `list_features`, `list_parts`, `get_part_properties`, `get_body_details`, `get_assembly`, `list_custom_features`, `list_variables`, `get_configuration`, `run_featurescript` |
-| Model | `create_sketch`, `extrude`, `fillet`, `chamfer`, `update_feature`, `delete_feature`, `add_feature`, `add_custom_feature` |
+| Model | `create_sketch`, `extrude`, `revolve`, `circular_pattern`, `linear_pattern`, `mirror`, `shell`, `boolean`, `fillet`, `chamfer`, `update_feature`, `delete_feature`, `add_feature`, `add_custom_feature` |
 | Names, variables, configurations, assemblies | `rename`, `set_variable`, `set_configuration_input`, `insert_instance`, `add_mate` |
 | Look & export | `capture_screenshot`, `export_model` |
 | Escape hatch | `onshape_api_request` |
