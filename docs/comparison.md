@@ -7,7 +7,7 @@ November 2026; check them for current details.
 |---|---|---|---|---|
 | Language / runs | Python, local stdio | Python, local stdio | Rust, local stdio (+ experimental HTTP) | Hosted by Onshape (HTTP) |
 | Install | `uvx` / `pip` / Docker | clone + venv | `npx` or binary | Onshape App Store subscription |
-| Auth | API keys (HMAC; Basic as fallback) | API keys (Basic) | OAuth (default) or API keys | Your Onshape sign-in |
+| Auth | API keys (HMAC; Basic as fallback) or your own OAuth application | API keys (Basic) | OAuth (default) or API keys | Your Onshape sign-in |
 | Default units | **millimeters**, inches via setting | inches only | not stated | n/a |
 | Screenshots | yes, with a **token-saving review toggle** | no | yes | no |
 | Read-only mode | yes | no | - | - |
@@ -48,8 +48,10 @@ November 2026; check them for current details.
   helpers (jamcp has `insert_instance` and `add_mate`, with all eight mate types) and a much larger
   test and example base. If you need that breadth right now, it covers more. jamcp's `add_feature`
   and `onshape_api_request` can reach those features but without the ergonomic helpers.
-- **altendky/onshape-mcp** supports OAuth (no long-lived secret keys) and a hosted HTTP mode, and
-  it discovers API endpoints dynamically rather than shipping a fixed tool list.
+- **altendky/onshape-mcp** has OAuth as its default sign-in and a hosted HTTP mode, and it discovers
+  API endpoints dynamically rather than shipping a fixed tool list. jamcp's OAuth is a local
+  sign-in for one user with an application you register yourself (see [OAuth](oauth.md)), and it
+  has no hosted mode.
 - **Onshape's FeatureScript MCP** is the right tool for *authoring custom features*; it is
   complementary to this server, not a replacement.
 

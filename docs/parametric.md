@@ -77,9 +77,25 @@ Look at one variant without changing the default: `get_part_properties`, `get_bo
 `capture_screenshot` take `configuration={"Size": "M18"}`; `insert_instance` takes the same to put
 that variant into an assembly. `get_configuration` lists the inputs.
 
+**Inputs made in Onshape's own UI** work the same way. Onshape gives them a generated ID
+(`List_gfWXlOaT2Zmfyo`) that differs from the label you see (`Configuration`), and their options
+have IDs too (`_3Spoke` for `3Spoke`). `get_configuration` shows the label and, beside it, the `id`
+and `option_ids`; every tool that takes a configuration or `by_option` accepts the labels (any
+letter case) or the IDs, translates them for Onshape, and refuses an unknown name with the list of
+valid ones instead of silently measuring the default variant:
+
+```
+get_part_properties(..., configuration={"Configuration": "3Spoke"})
+set_variable(name="spokes", kind="number", by_option={"Configuration": {"Default": 0, "3Spoke": 3, "6Spoke": 6}})
+```
+
 **Checked live:** a list input, a variable that depends on it, and the geometry following
 `configuration=Size=M18` (a circle driven by that variable measured 10 mm by default and 18 mm for
-M18). **Not checked live:** the full threaded bolt and nut under M18 (the run was cut short by
+M18); and an input shaped like a UI-made one (generated ID, different label, `_3Spoke` option IDs),
+with a configured variable built the way `set_variable` builds it: volumes per variant, asked for by
+label and by ID, matched pi*r^2*h exactly (785.4 / 1570.8 / 2356.2 mm3), and a wrong option was
+refused. `set_variable` itself could not run live that day because it reads the feature list first
+(see [rate limits](#rate-limits)). **Not checked live:** the full threaded bolt and nut under M18 (the run was cut short by
 Onshape's [rate limit](#rate-limits)), exporting a variant (`export_model` has no `configuration`
 option yet), and a number input used inside an expression.
 

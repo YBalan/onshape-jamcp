@@ -6,7 +6,7 @@ from typing import Any
 
 import httpx
 
-from . import features, fs, names
+from . import configurations, features, fs, names
 from .client import OnshapeClient, q
 from .config import Settings
 from .errors import ConfigError, InputError, OnshapeError
@@ -100,6 +100,45 @@ class App:
             f"/parts/d/{q(document_id)}/w/{q(workspace_id)}/e/{q(element_id)}"
         )
         return [p for p in data if isinstance(p, dict)] if isinstance(data, list) else []
+
+    def _configuration_key(self, document_id: str, workspace_id: str, element_id: str) -> str:
+        return f"configuration:{document_id}:{workspace_id}:{element_id}"
+
+    async def configuration_parameters(
+        self, document_id: str, workspace_id: str, element_id: str
+    ) -> list[dict]:
+        """The element's configuration inputs (IDs, labels, options), kept for a minute."""
+
+        async def load() -> list[dict]:
+            data = await self.client.get(
+                f"/elements/d/{q(document_id)}/w/{q(workspace_id)}/e/{q(element_id)}/configuration"
+            )
+            return [p for p in data.get("configurationParameters") or [] if isinstance(p, dict)]
+
+        return await self.cached(
+            self._configuration_key(document_id, workspace_id, element_id), 60.0, load
+        )
+
+    def forget_configuration(self, document_id: str, workspace_id: str, element_id: str) -> None:
+        self._cache.pop(self._configuration_key(document_id, workspace_id, element_id), None)
+
+    async def configuration_param(
+        self,
+        document_id: str,
+        workspace_id: str,
+        element_id: str,
+        configuration: configurations.Configuration | None,
+    ) -> str | None:
+        """The ``configuration`` query value for a read call. Input and option names may be the
+        labels people see in Onshape or the IDs; they are translated to the IDs Onshape needs."""
+        if not configuration:
+            return None
+        configurations.encode(configuration, self.units)  # syntax problems first, no request yet
+        try:
+            parameters = await self.configuration_parameters(document_id, workspace_id, element_id)
+        except OnshapeError:
+            parameters = []  # cannot check the names: send them as given
+        return configurations.encode(configurations.resolve(configuration, parameters), self.units)
 
     async def variables(self, document_id: str, workspace_id: str, element_id: str) -> list[dict]:
         """The Part Studio's ``assignVariable`` features: name, kind, expression and raw feature."""

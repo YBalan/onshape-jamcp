@@ -6,7 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Configuration inputs made in Onshape's UI.** Their generated IDs (`List_gfWXlOaT2Zmfyo`) and
+  option IDs (`_3Spoke`) differ from the labels shown in the UI (`Configuration`, `3Spoke`), and the
+  tools assumed ID = label. `get_configuration` now lists labels with the `id` / `option_ids` beside
+  them, and `configuration=` (measure, faces, screenshots, `insert_instance`), `set_variable`
+  `by_option` and `set_configuration_input` accept labels (any case) or IDs. An unknown input or
+  option is refused with the valid choices, where Onshape would silently have shown the default
+  variant. Checked live with an input shaped like a UI-made one.
+
 ### Added
+- **OAuth sign-in as an alternative to API keys.** Register your own Onshape OAuth application,
+  set `ONSHAPE_OAUTH_CLIENT_ID` / `ONSHAPE_OAUTH_CLIENT_SECRET`, and run `onshape-jamcp auth login`
+  once (browser, authorization-code flow on a `127.0.0.1` callback). The server then sends bearer
+  tokens, renews them before they expire and once more on a `401`, and keeps the refresh token in a
+  per-user file. New commands `auth login|status|logout`; new settings
+  `ONSHAPE_OAUTH_CLIENT_ID`, `_CLIENT_SECRET`, `_PORT`, `_TOKEN_FILE`, `_URL`; `ONSHAPE_AUTH_MODE`
+  accepts `oauth` (chosen automatically when only the OAuth client is set; API keys win when both
+  are). Checked live against a real Onshape OAuth application: sign-in, API calls, early refresh and
+  the retry after a rejected token. See `docs/oauth.md`.
 - **Custom features (Feature Scripts such as Thread Creator).** `list_custom_features` shows the
   custom features a Part Studio can use - or, with `feature_studio_url`, those a given Feature
   Studio defines - with their parameter IDs, types, units, defaults and options.

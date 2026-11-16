@@ -801,6 +801,167 @@ class TestConfigurations:
         assert result.is_error and not fake.requests
 
 
+class TestUiMadeConfigurations:
+    """Inputs made in Onshape's own UI have a generated ID that differs from the label shown there
+    (and options likewise). This is the shape read from a real hand-made 3Spoke / 6Spoke input."""
+
+    LIST_ID, LENGTH_ID = "List_gfWXlOaT2Zmfyo", "Length_abc123"
+    LIST = {
+        "btType": "BTMConfigurationParameterEnum-105",
+        "parameterId": LIST_ID,
+        "parameterName": "Configuration",
+        "enumName": f"{LIST_ID}_conf",
+        "namespace": "",
+        "defaultValue": "Default",
+        "options": [
+            {"btType": "BTMEnumOption-592", "option": "Default", "optionName": "Default"},
+            {"btType": "BTMEnumOption-592", "option": "_3Spoke", "optionName": "3Spoke"},
+            {"btType": "BTMEnumOption-592", "option": "_6Spoke", "optionName": "6Spoke"},
+        ],
+    }
+    LENGTH = {
+        "btType": "BTMConfigurationParameterQuantity-1826",
+        "parameterId": LENGTH_ID,
+        "parameterName": "Length",
+        "quantityType": "LENGTH",
+        "rangeAndDefault": {"minValue": 0.01, "maxValue": 0.2, "defaultValue": 0.04},
+    }
+
+    def arrange(self, fake):
+        fake.config_params = [self.LIST, self.LENGTH]
+
+    async def sent_configuration(self, server, fake, configuration):
+        await call(server, "get_part_properties", {**BASE, "configuration": configuration})
+        return fake.calls("GET", "boundingboxes")[-1].url.params["configuration"]
+
+    async def test_inputs_are_listed_by_label_with_their_ids(self, make_server, fake):
+        self.arrange(fake)
+        out = (await call(make_server(), "get_configuration", BASE)).structured_content
+        listed, length = out["inputs"]
+        assert listed == {
+            "name": "Configuration",
+            "id": self.LIST_ID,
+            "type": "list",
+            "options": ["Default", "3Spoke", "6Spoke"],
+            "default": "Default",
+            "option_ids": {"Default": "Default", "3Spoke": "_3Spoke", "6Spoke": "_6Spoke"},
+        }
+        assert (length["name"], length["id"], length["type"]) == (
+            "Length",
+            self.LENGTH_ID,
+            "length",
+        )
+        assert length["default"] == pytest.approx(40)
+
+    async def test_labels_and_ids_both_reach_onshape_as_ids(self, make_server, fake):
+        self.arrange(fake)
+        server = make_server()
+        by_label = await self.sent_configuration(
+            server, fake, {"Configuration": "3Spoke", "Length": 40}
+        )
+        assert by_label == f"{self.LIST_ID}=_3Spoke;{self.LENGTH_ID}=40 mm"
+        by_id = await self.sent_configuration(server, fake, {self.LIST_ID: "_6Spoke"})
+        assert by_id == f"{self.LIST_ID}=_6Spoke"
+        assert await self.sent_configuration(server, fake, {"configuration": "6SPOKE"}) == by_id
+
+    @pytest.mark.parametrize(
+        ("configuration", "message"),
+        [
+            ({"Colour": "red"}, r"no configuration input 'Colour'.*'Configuration', 'Length'"),
+            ({"Configuration": "9Spoke"}, r"no option '9Spoke'.*'Default', '3Spoke', '6Spoke'"),
+        ],
+    )
+    async def test_unknown_names_are_explained_and_nothing_is_measured(
+        self, make_server, fake, configuration, message
+    ):
+        self.arrange(fake)
+        result = await call(
+            make_server(),
+            "get_part_properties",
+            {**BASE, "configuration": configuration},
+            expect_error=True,
+        )
+        assert re.search(message, text_of(result))
+        assert not fake.calls("GET", "boundingboxes")
+
+    async def test_the_definition_is_read_once_for_several_calls(self, make_server, fake):
+        self.arrange(fake)
+        server = make_server()
+        for option in ("3Spoke", "6Spoke", "Default"):
+            await self.sent_configuration(server, fake, {"Configuration": option})
+        assert len(fake.calls("GET", "/configuration")) == 1
+
+    async def test_screenshots_and_body_details_resolve_names_too(self, make_server, fake):
+        self.arrange(fake)
+        server = make_server()
+        cfg = {"configuration": {"Configuration": "6Spoke"}}
+        await call(server, "get_body_details", {**BASE, **cfg})
+        await call(server, "capture_screenshot", {**BASE, **cfg})
+        for pattern in ("bodydetails", "shadedviews"):
+            sent = fake.calls("GET", pattern)[0].url.params["configuration"]
+            assert sent == f"{self.LIST_ID}=_6Spoke", pattern
+
+    async def test_an_instance_is_inserted_in_the_variant_named_by_label(self, make_server, fake):
+        self.arrange(fake)
+        await call(
+            make_server(),
+            "insert_instance",
+            {
+                "document_id": DID,
+                "assembly_id": AID,
+                "source_element_id": EID,
+                "part_id": "JHD",
+                "configuration": {"Configuration": "6Spoke"},
+            },
+        )
+        assert fake.inserted[-1]["configuration"] == f"{self.LIST_ID}=_6Spoke"
+
+    async def test_a_variable_can_depend_on_an_input_made_in_the_ui(self, make_server, fake):
+        self.arrange(fake)
+        server = make_server()
+        out = (
+            await call(
+                server,
+                "set_variable",
+                {
+                    **BASE,
+                    "name": "spokes",
+                    "kind": "number",
+                    "by_option": {"Configuration": {"Default": 0, "3Spoke": 3, "_6Spoke": 6}},
+                },
+            )
+        ).structured_content
+        assert out["status"] == "OK"
+        value = next(p for p in fake.features[0]["parameters"] if p["parameterId"] == "numberValue")
+        assert value["configurationParameterId"] == self.LIST_ID  # the ID, not the label
+        inner = {v["enumValue"]: v for v in value["values"]}
+        assert set(inner) == {"Default", "_3Spoke", "_6Spoke"}
+        assert inner["_6Spoke"]["value"]["expression"] == "6"
+        assert inner["_3Spoke"]["enumName"] == f"{self.LIST_ID}_conf"
+        listed = (await call(server, "list_variables", BASE)).structured_content["variables"]
+        assert listed[0]["configured_by"] == "Configuration"
+        assert listed[0]["by_option"] == {"Default": "0", "3Spoke": "3", "6Spoke": "6"}
+
+    async def test_a_missing_option_value_names_the_labels(self, make_server, fake):
+        self.arrange(fake)
+        result = await call(
+            make_server(),
+            "set_variable",
+            {**BASE, "name": "n", "kind": "number", "by_option": {"Configuration": {"3Spoke": 3}}},
+            expect_error=True,
+        )
+        assert "missing: ['Default', '6Spoke']" in text_of(result) and not fake.features
+
+    async def test_replacing_an_input_by_its_label(self, make_server, fake):
+        self.arrange(fake)
+        await call(
+            make_server(),
+            "set_configuration_input",
+            {**BASE, "name": "Configuration", "kind": "list", "options": ["A", "B"]},
+        )
+        assert [p["parameterId"] for p in fake.config_params] == [self.LENGTH_ID, "Configuration"]
+
+
 class TestVariables:
     @staticmethod
     def values(feature):

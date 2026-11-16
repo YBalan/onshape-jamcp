@@ -7,6 +7,7 @@ toggle for the LLM.
 |---|---|
 | Install it and make your first part | [Getting started](getting-started.md) |
 | Switch to inches, turn screenshots off, set read-only | [Configuration](configuration.md) |
+| Sign in with OAuth instead of API keys | [OAuth sign-in](oauth.md) |
 | Do a specific task (holes, fillets, edits, export, ...) | [How-to recipes](how-to.md) |
 | Add threads (bolts, nuts) with ThreadCreator or another Feature Script | [Threads and custom features](threads.md) |
 | Name things, use variables, configurations (M10 / M18), assemblies | [Parametric modeling](parametric.md) |

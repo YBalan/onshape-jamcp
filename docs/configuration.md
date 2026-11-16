@@ -13,8 +13,9 @@ override the environment.
 ```
 
 Invalid values stop the server at startup with a message naming the variable (exit code 2). Missing
-API keys do **not** stop it: the server starts and lists its tools, and each tool call that needs
-Onshape reports what to set.
+API keys (or a missing OAuth sign-in) do **not** stop it: the server starts and lists its tools, and
+each tool call that needs Onshape reports what to set. Prefer signing in with your account over a
+permanent key? See [OAuth](oauth.md).
 
 ## All settings
 
@@ -22,6 +23,10 @@ Onshape reports what to set.
 |---|---|---|---|
 | `ONSHAPE_ACCESS_KEY` | | - | API access key (required for any tool that calls Onshape). |
 | `ONSHAPE_SECRET_KEY` | | - | API secret key. |
+| `ONSHAPE_OAUTH_CLIENT_ID` / `ONSHAPE_OAUTH_CLIENT_SECRET` | | - | Your own Onshape OAuth application, as an alternative to API keys. Then run `onshape-jamcp auth login` once. See [OAuth](oauth.md). |
+| `ONSHAPE_OAUTH_PORT` | | `18339` | Port of the local sign-in callback (redirect URL `http://localhost:<port>/callback`, 1024-65535). |
+| `ONSHAPE_OAUTH_TOKEN_FILE` | | per-user config folder | Where the OAuth tokens are stored. |
+| `ONSHAPE_OAUTH_URL` | | `https://oauth.onshape.com` | Onshape's OAuth server (must be `https`). |
 | `ONSHAPE_UNITS` | `--units` | `metric` | `metric` (millimeters) or `imperial` (inches). Aliases: `mm`, `inch`, `inches`, `in`. |
 | `ONSHAPE_SCREENSHOT_REVIEW` | `--screenshot-review` / `--no-screenshot-review` | `true` | Send screenshots to the LLM for review. See [screenshots](screenshots.md). |
 | `ONSHAPE_SCREENSHOT_WIDTH` | | `800` | Default screenshot width in px (64-2000). |
@@ -30,7 +35,7 @@ Onshape reports what to set.
 | `ONSHAPE_READ_ONLY` | `--read-only` | `false` | Do not register any tool that modifies documents; block non-GET `onshape_api_request`. |
 | `ONSHAPE_BASE_URL` | | `https://cad.onshape.com` | Onshape origin. Enterprise accounts: `https://yourcompany.onshape.com`. Must be `https` (plain `http` only for localhost). |
 | `ONSHAPE_API_VERSION` | | `v17` | REST API version, `v` + number. The tools were written against v17. |
-| `ONSHAPE_AUTH_MODE` | | `hmac` | `hmac` signs each request (the secret is never transmitted). `basic` sends `access:secret` as HTTP Basic over HTTPS; Onshape documents it as lowest-security, "for local testing only", so use it only as a fallback if signing misbehaves. |
+| `ONSHAPE_AUTH_MODE` | | automatic | `hmac` signs each request (the secret is never transmitted). `basic` sends `access:secret` as HTTP Basic over HTTPS; Onshape documents it as lowest-security, "for local testing only", so use it only as a fallback if signing misbehaves. `oauth` uses the OAuth sign-in. Unset: `hmac`, unless only the OAuth client is configured (API keys win when both are set). |
 | `ONSHAPE_TIMEOUT` | | `60` | Per-request timeout in seconds (1-600). Raise it for very large models. |
 | `ONSHAPE_LOG_LEVEL` | | `WARNING` | `DEBUG`, `INFO`, `WARNING`, `ERROR`. Logs go to **stderr** (stdout is the MCP channel). `DEBUG` also logs HTTP requests (never credentials or bodies). |
 

@@ -18,7 +18,7 @@ _No parameters._
 
 ### `whoami` 🔍
 
-Verify that the configured API keys work by asking Onshape which account they belong to. Use it to diagnose authentication problems before doing real work.
+Verify that the configured credentials (API keys or OAuth sign-in) work by asking Onshape which account they belong to. Use it to diagnose authentication problems before doing real work.
 
 _No parameters._
 
@@ -152,7 +152,7 @@ List the variables of a Part Studio: name, type, the expression it was set with 
 
 ### `get_configuration` 🔍
 
-List the configuration inputs of a Part Studio (for example a 'Size' list with M10 and M18, or a 'Length'), with their options and defaults. Other tools take a `configuration` such as {"Size": "M18"} to measure or look at one variant.
+List the configuration inputs of a Part Studio (for example a 'Size' list with M10 and M18, or a 'Length'), with their options and defaults. Names are the labels shown in Onshape; for an input made in Onshape's UI the generated `id` (and `option_ids`) are shown beside them. Other tools take a `configuration` such as {"Size": "M18"} (labels or IDs) to measure or look at one variant.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

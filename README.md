@@ -78,7 +78,8 @@ Set as environment variables (the `env` block of your MCP client) or CLI flags. 
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ONSHAPE_ACCESS_KEY` / `ONSHAPE_SECRET_KEY` | - | **Required.** API keys. |
+| `ONSHAPE_ACCESS_KEY` / `ONSHAPE_SECRET_KEY` | - | **Required** (or OAuth, next row). API keys. |
+| `ONSHAPE_OAUTH_CLIENT_ID` / `ONSHAPE_OAUTH_CLIENT_SECRET` | - | Alternative to API keys: your own Onshape OAuth app, then `onshape-jamcp auth login` once. See [docs/oauth.md](docs/oauth.md). |
 | `ONSHAPE_UNITS` | `metric` | `metric` = millimeters, `imperial` = inches. Flag: `--units`. |
 | `ONSHAPE_SCREENSHOT_REVIEW` | `true` | Send screenshots to the LLM (`true`) or only save them (`false`). Flag: `--[no-]screenshot-review`. |
 | `ONSHAPE_READ_ONLY` | `false` | Hide all write tools. Flag: `--read-only`. |
@@ -105,6 +106,7 @@ Full parameter reference (generated from the code): [docs/tools.md](docs/tools.m
 
 - [Getting started](docs/getting-started.md) - keys, installing in each client, first prompt
 - [Configuration](docs/configuration.md) - every setting, units, precedence
+- [OAuth sign-in](docs/oauth.md) - sign in with your Onshape account instead of API keys
 - [How-to recipes](docs/how-to.md) - holes, fillets, edits, inches, export, read-only, advanced features
 - [Threads and custom features](docs/threads.md) - ThreadCreator: bolt and nut example, every option, how to check it
 - [Parametric modeling](docs/parametric.md) - names, variables, configurations (M10 / M18) and assemblies
@@ -119,6 +121,8 @@ Full parameter reference (generated from the code): [docs/tools.md](docs/tools.m
 
 - API keys stay in your MCP client's config / environment. They are never returned by any tool,
   never logged, and requests are HMAC-signed so the secret is not even sent over the wire.
+  With OAuth the tokens live in a per-user file and are likewise never returned, logged or sent
+  anywhere but Onshape.
 - **Onshape's free plan makes every document public.** Do not model confidential work there.
 - Write tools act as *you* on your real documents. Use `ONSHAPE_READ_ONLY=true` when you only want
   the assistant to look around, and rely on Onshape's version history as your undo.

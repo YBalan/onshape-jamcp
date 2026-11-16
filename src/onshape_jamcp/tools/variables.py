@@ -8,7 +8,7 @@ from pydantic import Field
 from .. import configurations, features, fs
 from ..app import App
 from ..client import q
-from ..errors import InputError
+from ..errors import InputError, OnshapeError
 from .common import DocumentId, ElementId, Registrar, WorkspaceId
 
 
@@ -103,6 +103,12 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         variable as '#name' in sketch sizes, extrude depths, fillet radii, thread pitch, etc."""
         wid = await app.workspace(document_id, workspace_id)
         found = await app.variables(document_id, wid, element_id)
+        inputs: list[dict[str, Any]] = []
+        if any(v.get("configured_by") for v in found):
+            try:  # show the labels people see in Onshape rather than generated IDs
+                inputs = await app.configuration_parameters(document_id, wid, element_id)
+            except OnshapeError:
+                inputs = []
         values = (
             await app.variable_values(
                 document_id, wid, element_id, {v["name"]: v["kind"] for v in found}
@@ -120,8 +126,15 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
                 "feature_id": v["feature_id"],
             }
             if v.get("configured_by"):
-                entry["configured_by"] = v["configured_by"]
-                entry["by_option"] = v["by_option"]
+                spec = configurations.find_input(inputs, v["configured_by"], enum_only=True)
+                entry["configured_by"] = (
+                    configurations.input_label(spec) if spec else v["configured_by"]
+                )
+                entry["by_option"] = (
+                    {configurations.option_label(spec, o): e for o, e in v["by_option"].items()}
+                    if spec and v["by_option"]
+                    else v["by_option"]
+                )
             value = values.get(v["name"])
             if value is not None:
                 if v["kind"] == "LENGTH":
@@ -206,13 +219,8 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             configuration = await app.client.get(
                 f"/elements/d/{q(document_id)}/w/{q(wid)}/e/{q(element_id)}/configuration"
             )
-            spec = next(
-                (
-                    p
-                    for p in configuration.get("configurationParameters") or []
-                    if p.get("parameterId") == input_name and configurations.is_enum(p)
-                ),
-                None,
+            spec = configurations.find_input(
+                configuration.get("configurationParameters") or [], input_name, enum_only=True
             )
             if spec is None:
                 raise InputError(

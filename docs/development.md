@@ -20,7 +20,8 @@ src/onshape_jamcp/
   __main__.py     CLI: flags -> env -> Settings -> build_server().run("stdio")
   config.py       Settings.from_env(): every ONSHAPE_* variable, validation, public_dict()
   units.py        UnitSystem (metric/imperial): conversions + Onshape expression strings
-  client.py       OnshapeClient: HMAC signing, retries on 429, safe manual redirects, errors
+  client.py       OnshapeClient: HMAC / Basic / Bearer auth, retries on 429, safe manual redirects, errors
+  oauth.py        OAuth 2: token file, refresh (rotation-safe), browser sign-in (`auth login`)
   app.py          App: lazy client + caches (default workspace, plane IDs, element types)
   fs.py           FeatureScript helpers: unwrap() typed results, plane-ID script
   sketch.py       Shape models (pydantic) -> BTMSketch-151 JSON
@@ -54,7 +55,12 @@ MCP client ──stdio──▶ MCPServer ──▶ tool function ──▶ App 
 - **No hard-coded origin-plane IDs.** `App.plane_id` evaluates FeatureScript
   (`qCreatedBy(makeId("Top"), EntityType.FACE)`) once per element and caches the result.
 - **Credentials are lazy.** The server starts without keys so registries can introspect it;
-  `Settings.require_credentials()` runs on first API use.
+  `Settings.require_credentials()` (or, for OAuth, the token file read in `OAuthSession`) runs on
+  first API use.
+- **OAuth is a client concern.** Tools never see tokens: `OnshapeClient` asks `OAuthSession` for a
+  bearer token per request, renews it once on a `401`, and attaches it only to Onshape hosts.
+  Refresh tokens may rotate (Onshape documents it; one live check showed none), so every renewal
+  saves whatever comes back and re-reads the file first.
 - **Read-only is structural.** Tools declared `writes=True` are simply not registered.
 - **Redirects never leak credentials.** The client follows `3xx` manually; auth headers are only
   attached for the configured host / `*.onshape.com`.
@@ -85,6 +91,7 @@ The docs test fails if `docs/tools.md` is stale or an `ONSHAPE_*` variable is un
 |---|---|
 | `test_units_config.py` | conversions, aliases, validation, secrets never printed |
 | `test_client.py` | HMAC signature recomputed independently, basic mode, 429 retry, error mapping, redirect safety, timeouts |
+| `test_oauth.py` | OAuth settings, token file, token endpoint form, refresh and rotation, bearer + 401 retry, no token to third-party hosts, the browser flow with a simulated browser (state check, denial, timeout, busy port), `auth` commands |
 | `test_builders.py` | sketch/feature JSON structure and unit conversion |
 | `test_tools.py` | every tool end to end through a real MCP `Client` against `fake_onshape.py` |
 | `test_stdio.py` | the real process: starts without keys, flags override env, bad config exits 2, stdout stays clean |
@@ -180,8 +187,21 @@ the geometry), polygon sketches, `qContainsPoint` edge selection through `run_fe
 The smoke test only checks that `list_custom_features` runs; to also try a real script pass a
 Feature Studio version URL: `uv run python scripts/smoke_test.py --custom-feature-studio <url>`.
 
+**OAuth (2026-11-16, verified live).** Implemented from Onshape's OAuth documentation and tested
+against a simulated token server (including that a forged callback is ignored and that breaking the
+host check is caught), then run against a real OAuth application:
+
+| Area | Result |
+|---|---|
+| Sign-in | `auth login` worked with no `scope` and no PKCE: authorize on `oauth.onshape.com`, redirect to `http://localhost:18339/callback`, code exchange with `client_id` and `client_secret` in the form body. Denying on the consent page comes back as `error=access_denied`, which the server reports and stores nothing for. |
+| Token reply | Fields `access_token`, `refresh_token`, `token_type` (`bearer`), `expires_in` (about 3600) and `scope` (the application's permissions, e.g. `OAuth2Read OAuth2Write OAuth2Delete ...`). |
+| API calls | `/users/sessioninfo` and `/documents` with `Authorization: Bearer ...` worked. |
+| Early refresh | With the stored expiry forced into the past, the next request refreshed and worked. **The refresh token did not change** (documentation says it rotates), the old one still worked, and Onshape returned the **same access token** while it was still valid, with the true remaining lifetime in `expires_in` (3599, then 3598 a moment later), but a different token after a pause of a minute or two. Hence the 30-second renewal margin and saving whatever comes back. |
+| Rejected token | An invalid access token got a `401`; the client renewed and repeated the request successfully. |
+| Not checked | A session spanning a real one-hour expiry, refresh-token lifetime over days, enterprise accounts (`ONSHAPE_OAUTH_URL`), and what happens after the grant is revoked. |
+
 Still unverified live (not covered by the smoke test): `delete_feature` on a feature
-others depend on, `add_feature` with non-trivial JSON, Assembly with instances/mates, configured
+others depend on, `add_feature` with non-trivial JSON, configured
 (parametric) Part Studios, imperial output on real data, enterprise base URLs, and Onshape's
 paid-plan behavior. Run the smoke test after any change to `sketch.py`, `features.py`,
 `tools/modeling.py` or `client.py`:
@@ -211,7 +231,7 @@ version, package metadata and changelog ever drift apart.
 ## Ideas / roadmap
 
 - Revolve, linear/circular pattern, hole and mirror helpers (needs a verified axis/selection model).
-- Part Studio variables (`assign` features) and Variable Studios.
-- Assembly mates and instance insertion.
-- OAuth instead of long-lived keys; streamable-HTTP transport for self-hosting.
+- Variable Studios (Part Studio variables exist: `set_variable`).
+- Streamable-HTTP transport for self-hosting, with per-user OAuth (today's OAuth is a local sign-in
+  for one user).
 - `ONSHAPE_SCREENSHOT_AUTO` to attach a screenshot to every modeling result.

@@ -158,8 +158,9 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         area, mass and centroid per part, in the configured length unit. Use it to verify
         dimensions and orientation after modeling. Mass is only meaningful if the part has a
         material assigned in Onshape."""
-        cfg = configurations.encode(configuration, app.units)  # validate before any request
+        configurations.encode(configuration, app.units)  # validate before any request
         wid = await app.workspace(document_id, workspace_id)
+        cfg = await app.configuration_param(document_id, wid, element_id, configuration)
         units = app.units
         base = f"/partstudios/d/{q(document_id)}/w/{q(wid)}/e/{q(element_id)}"
         if part_id:
@@ -235,6 +236,7 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         area, a point on the face and its outward normal, all in the configured length unit. Use
         face IDs as `plane` in create_sketch to sketch on a face, and edge IDs for fillet /
         chamfer. Output is capped for very large parts."""
+        configurations.encode(configuration, app.units)  # validate before any request
         wid = await app.workspace(document_id, workspace_id)
         units = app.units
         data = await app.client.get(
@@ -242,7 +244,9 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             {
                 "includeGeometricData": True,
                 "partIds": [part_id] if part_id else None,
-                "configuration": configurations.encode(configuration, units),
+                "configuration": await app.configuration_param(
+                    document_id, wid, element_id, configuration
+                ),
             },
         )
         bodies_out = []

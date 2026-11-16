@@ -30,6 +30,9 @@ This page takes you from nothing to a first part modeled by an AI assistant.
 Tip: want the assistant to look but never touch? Give the key *read* scope only (or run with
 `ONSHAPE_READ_ONLY=true`).
 
+Prefer not to keep a permanent secret key? You can sign in with your Onshape account through
+OAuth instead: see [OAuth sign-in](oauth.md) (it needs an OAuth application of your own).
+
 ## 3. Install in your MCP client
 
 All clients need the same three things: a **command** that starts the server, **environment
