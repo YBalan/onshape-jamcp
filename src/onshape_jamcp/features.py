@@ -86,6 +86,7 @@ def extrude_feature(
     units: UnitSystem,
     opposite_direction: bool = False,
     symmetric: bool = False,
+    only_parts: list[str] | None = None,
 ) -> dict[str, Any]:
     if operation not in _OPERATIONS:
         raise InputError(f"operation must be one of {sorted(_OPERATIONS)}, got {operation!r}.")
@@ -99,6 +100,8 @@ def extrude_feature(
         quantity_param("depth", units.length_expression(depth)),
         bool_param("oppositeDirection", opposite_direction),
     ]
+    if only_parts:  # restrict add / remove / intersect to these parts instead of every part hit
+        parameters += [bool_param("defaultScope", False), query_param("booleanScope", only_parts)]
     return wrap_feature("extrude", name, parameters)
 
 
@@ -127,6 +130,32 @@ def chamfer_feature(
             quantity_param("width", units.length_expression(distance)),
         ],
     )
+
+
+# --- variables -----------------------------------------------------------------------------
+
+VARIABLE_KINDS = {"length": "LENGTH", "angle": "ANGLE", "number": "NUMBER"}
+VARIABLE_VALUE_PARAMETER = {"LENGTH": "lengthValue", "ANGLE": "angleValue", "NUMBER": "numberValue"}
+
+
+def variable_feature(name: str, kind: str, expression: str) -> dict[str, Any]:
+    """A Part Studio variable (``assignVariable``), shown in Onshape as ``#name``.
+
+    Checked live: the three parameters below are enough, and sketches / features can then use
+    ``#name`` in any expression.
+    """
+    kind_id = VARIABLE_KINDS[kind]
+    body = wrap_feature(
+        "assignVariable",
+        f"#{name}",
+        [
+            enum_param("mode", "VariableMode", "ASSIGNED"),
+            enum_param("variableType", "VariableType", kind_id),
+            {"btType": "BTMParameterString-149", "value": name, "parameterId": "name"},
+            quantity_param(VARIABLE_VALUE_PARAMETER[kind_id], expression),
+        ],
+    )
+    return body
 
 
 # --- responses ------------------------------------------------------------------------------

@@ -12,7 +12,7 @@ November 2026; check them for current details.
 | Screenshots | yes, with a **token-saving review toggle** | no | yes | no |
 | Read-only mode | yes | no | - | - |
 | Scope | documents, sketch/extrude/fillet/chamfer, edit, measure, faces/edges, assembly view, export, raw API | very broad modeling + assemblies/mates (45+ tools) | broad, endpoints discovered dynamically; FeatureScript authoring | generate/debug FeatureScript custom features only |
-| Tool count | 22 | 45-48 | - | - |
+| Tool count | 31 | 45-48 | - | - |
 
 ## Where jamcp is deliberately different
 

@@ -11,12 +11,13 @@ from typing import Annotated, Any, Literal
 from mcp.server.mcpserver import Image, MCPServer
 from pydantic import Field
 
+from .. import configurations
 from ..app import App
 from ..client import q
 from ..config import MAX_IMAGE_PX, MIN_IMAGE_PX
 from ..errors import InputError, OnshapeError
 from ..views import MAX_VIEWS, resolve_view
-from .common import DocumentId, ElementId, Registrar, WorkspaceId
+from .common import Configuration, DocumentId, ElementId, Registrar, WorkspaceId
 
 #: Rough vision-token cost of an image: ~ (width * height) / 750 for common vision models.
 PIXELS_PER_TOKEN = 750
@@ -71,6 +72,7 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         part_id: Annotated[
             str | None, Field(description="Render only this part (Part Studios only).")
         ] = None,
+        configuration: Configuration | None = None,
         width: Annotated[
             int | None,
             Field(
@@ -134,6 +136,8 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             }
             if not part_id:
                 params["showAllParts"] = True
+            if configuration:
+                params["configuration"] = configurations.encode(configuration, app.units)
             data = await app.client.get(path, params)
             encoded = _flatten_images(data.get("images"))
             if not encoded:

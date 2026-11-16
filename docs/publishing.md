@@ -179,7 +179,8 @@ Anything that fails in *verify* or *build* stops the release before anything is 
    - MIT `LICENSE` ✔
    - every tool has a description, typed parameters with descriptions, and annotations
      (`readOnlyHint` / `destructiveHint`) ✔
-   - 22 tools - below the ~25 threshold where Glama starts to penalize tool count ✔
+   - 31 tools - ABOVE the ~25 threshold where Glama starts to penalize tool count (a trade-off
+     made for variables, configurations, naming and assemblies; consider optional tool groups)
    - a README with install and configuration ✔
    - keep shipping releases and answering issues for the maintenance grade.
 

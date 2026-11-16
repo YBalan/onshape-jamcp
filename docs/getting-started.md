@@ -161,5 +161,7 @@ What the assistant does with the tools:
 ## Next
 
 - [How-to recipes](how-to.md) for common tasks
+- [Threads and custom features](threads.md) for bolts, nuts and other Feature Scripts
+- [Parametric modeling](parametric.md) for names, variables, configurations and assemblies
 - [Configuration](configuration.md) to switch to inches or turn off screenshot review
 - [Screenshots & token cost](screenshots.md)

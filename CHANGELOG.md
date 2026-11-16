@@ -6,6 +6,52 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Custom features (Feature Scripts such as Thread Creator).** `list_custom_features` shows the
+  custom features a Part Studio can use - or, with `feature_studio_url`, those a given Feature
+  Studio defines - with their parameter IDs, types, units, defaults and options.
+  `add_custom_feature` adds one, building the feature from Onshape's own feature spec (namespace
+  copied from Onshape, unspecified parameters keep the script's defaults). 24 tools now.
+  Checked against a live account: discovery, cross-document namespaces (`d..::v..::e..::m..`,
+  version URLs) and threading a real part with ThreadCreator work, and a hand-made ThreadCreator
+  instance was reproduced parameter for parameter. Onshape gives no error text for a failing
+  feature; `docs/how-to.md` explains how to compare against a hand-made instance.
+- Enum parameters of a script in another document carry that script's namespace too; it is now
+  qualified together with the feature's own (leaving the local form made the feature fail).
+- The default feature name is the script's own name template, as Onshape's UI does.
+- `add_custom_feature` reports the status read back from the feature list: Onshape's reply to the add
+  call can say `OK` for a feature that fails when regenerated.
+
+- **Names by default:** `rename` (part or tab), `part_name` on `extrude`, and `has_default_name` flags
+  on tabs and parts that still carry Onshape's placeholder names.
+- **Variables by default:** `set_variable` / `list_variables`, and `"#name"` as a size in sketches
+  (circle, new `hexagon` shape, rectangle `width`/`height`), extrude depth, fillets and thread pitch.
+- **Configurations (only on request):** `set_configuration_input`, `get_configuration`,
+  `set_variable(by_option=...)` and a `configuration` option on `get_part_properties`,
+  `get_body_details`, `capture_screenshot` and `insert_instance`.
+- **Assemblies (only on request):** `insert_instance` and `add_mate` (all eight mate types, flip,
+  offset). Built the way Onshape builds mates - two implicit mate connectors embedded in a
+  `BTMMate-64` - learned from a hand-made mate and verified by solving it; the reply reports the
+  real status and both instances' positions.
+- `extrude(only_parts=...)` restricts add / remove / intersect to given parts; an unscoped
+  `intersect` is refused when it would delete other parts.
+- `get_part_properties` returns Onshape's tight bounding box by default (`tight=false` for the quick
+  one); the REST box overshot by 0.5 mm per side on a threaded nut.
+- A `429` with a long `Retry-After` (a per-endpoint daily limit) is no longer retried and the error
+  says when it resets.
+- **Extrude names carry the size by default** ("Extrude 8 mm", "Cut 3 mm", "Extrude #head_h"); `hole=true`
+  names a drilled hole "Hole" without a size; `update_feature` refreshes an automatic name when the
+  depth changes.
+- **Fewer Onshape requests:** `set_variable(variables={...})` and `update_feature(updates=[...])` use
+  Onshape's multi-update endpoint (`features/updates`, checked live: two variables, one request);
+  `create_sketch` looks `#variables` up with one FeatureScript call instead of reading the feature
+  list; the 9 MB feature specs are cached for 5 minutes.
+- 31 tools now.
+
+### Fixed
+- `update_feature` writes integer parameters (counts, e.g. thread turns) as plain numbers instead of
+  lengths such as `3 mm`.
+
 ## [1.0.0] - 2026-11-14
 
 ### Changed

@@ -42,6 +42,30 @@ its configuration is) and **`whoami`** (proves the API keys work).
 | `fillet` fails | Radius too large for the geometry, or edge IDs are stale (IDs change when upstream features change). Re-run `get_body_details`. |
 | `Cannot read 'x' as a length` | Lengths are numbers, `"12 mm"` strings, or (for extrude/fillet/chamfer/update) Onshape expressions like `#width`. Sketch geometry must be concrete numbers. |
 
+## Naming, variables, configurations, assemblies
+
+Details: [Parametric modeling](parametric.md).
+
+| Symptom | Cause / fix |
+|---|---|
+| `429` saying the daily limit for THIS endpoint is used up | Onshape limits each endpoint per day (seen: `GET .../features`, about 22 h). Wait for the reset; other endpoints still work. Avoid polling `list_features`. |
+| `Variable(s) #x are not defined` | Create it first with `set_variable`; a sketch size must be a plain `#name`. |
+| `There is no configuration list input 'Size'` | Create it with `set_configuration_input` before `set_variable(by_option=...)`. |
+| A mate is `OK` but nothing moved | Read the positions `add_mate` returns. The first part must be grounded (`fixed=True`), and each side needs an entity ID (circular edge for `center`, face for `centroid`); see [assemblies](parametric.md#assemblies). |
+| `intersect` refused | An unscoped intersect deletes every part that does not overlap; pass `only_parts`. |
+
+## Threads and custom features
+
+Details and the full workflow: [Threads and custom features](threads.md).
+
+| Symptom | Cause / fix |
+|---|---|
+| `list_custom_features` shows no ThreadCreator | The API does not list the scripts on your toolbar. Use the script once in that Part Studio, or pass `feature_studio_url`. |
+| "needs a *version* URL" | A Feature Studio in another document must be given as `.../documents/<did>/v/<version>/e/<eid>`. |
+| Thread feature is `ERROR` | Onshape gives no reason through the API. Check the face is a cylinder, then compare with a thread made by hand (`list_features(feature_id=...)`). |
+| A nut's thread is too small / wrong size | The hole was modeled at the tap-drill size. ThreadCreator takes the selected face as the **major** diameter: cut a Ø10 hole for M10. |
+| A bolt came out as an internal thread, or with an inch profile | `internalThreads` defaults to `true` and `threadProfile` to `ANSI_STD`. Pass `internalThreads: false` and `ISO_STD`. |
+
 ## Screenshots and exports
 
 | Symptom | Cause / fix |

@@ -5,12 +5,12 @@ from typing import Annotated, Any
 from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
-from .. import fs
+from .. import configurations, fs, names
 from ..app import App
 from ..client import q
-from ..errors import InputError
+from ..errors import InputError, OnshapeError
 from ..units import UnitSystem
-from .common import DocumentId, ElementId, Registrar, WorkspaceId
+from .common import Configuration, DocumentId, ElementId, Registrar, WorkspaceId
 
 MAX_FACES = 300
 MAX_EDGES = 600
@@ -120,20 +120,21 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         document_id: DocumentId, element_id: ElementId, workspace_id: WorkspaceId = None
     ) -> dict[str, Any]:
         """List the parts (solid/surface bodies) in a Part Studio with their part IDs, which
-        other tools accept to focus on one part."""
+        other tools accept to focus on one part. A part flagged has_default_name is still called
+        "Part N": give it a descriptive name with `rename`."""
         wid = await app.workspace(document_id, workspace_id)
-        parts = await app.client.get(f"/parts/d/{q(document_id)}/w/{q(wid)}/e/{q(element_id)}")
-        return {
-            "parts": [
-                {
-                    "part_id": p.get("partId"),
-                    "name": p.get("name"),
-                    "body_type": p.get("bodyType"),
-                    "hidden": bool(p.get("isHidden")),
-                }
-                for p in (parts if isinstance(parts, list) else [])
-            ]
-        }
+        entries = []
+        for p in await app.parts(document_id, wid, element_id):
+            entry = {
+                "part_id": p.get("partId"),
+                "name": p.get("name"),
+                "body_type": p.get("bodyType"),
+                "hidden": bool(p.get("isHidden")),
+            }
+            if names.is_default_part_name(p.get("name")):
+                entry["has_default_name"] = True
+            entries.append(entry)
+        return {"parts": entries}
 
     @tool(title="Measure part or Part Studio", read_only=True)
     async def get_part_properties(
@@ -143,22 +144,50 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         part_id: Annotated[
             str | None, Field(description="Measure only this part (from list_parts).")
         ] = None,
+        configuration: Configuration | None = None,
+        tight: Annotated[
+            bool,
+            Field(
+                description="Use Onshape's TIGHT bounding box (default). The quick REST box can "
+                "be too large on swept surfaces such as threads (0.5 mm per side on an M10 "
+                "nut); false returns that quick box."
+            ),
+        ] = True,
     ) -> dict[str, Any]:
         """Measure geometry: the axis-aligned bounding box (min/max/size) plus volume, surface
         area, mass and centroid per part, in the configured length unit. Use it to verify
         dimensions and orientation after modeling. Mass is only meaningful if the part has a
         material assigned in Onshape."""
+        cfg = configurations.encode(configuration, app.units)  # validate before any request
         wid = await app.workspace(document_id, workspace_id)
         units = app.units
         base = f"/partstudios/d/{q(document_id)}/w/{q(wid)}/e/{q(element_id)}"
         if part_id:
             base = f"/parts/d/{q(document_id)}/w/{q(wid)}/e/{q(element_id)}/partid/{q(part_id)}"
-        bbox = await app.client.get(f"{base}/boundingboxes")
-        mass = await app.client.get(f"{base}/massproperties")
+        bbox = await app.client.get(f"{base}/boundingboxes", {"configuration": cfg})
+        mass = await app.client.get(f"{base}/massproperties", {"configuration": cfg})
 
         lows = [bbox.get(k) for k in ("lowX", "lowY", "lowZ")]
         highs = [bbox.get(k) for k in ("highX", "highY", "highZ")]
         result: dict[str, Any] = {"length_unit": units.length_unit}
+        if tight:
+            corners = None
+            try:
+                response = await app.evaluate_featurescript(
+                    document_id,
+                    wid,
+                    element_id,
+                    fs.tight_box_script(bool(part_id)),
+                    {"part": [part_id]} if part_id else None,
+                    cfg,
+                )
+                corners = fs.unwrap(response.get("result"))
+            except OnshapeError:
+                corners = None
+            if isinstance(corners, list) and len(corners) == 6:
+                lows, highs = corners[:3], corners[3:]
+            else:
+                result["bounding_box_note"] = "Tight box unavailable; this is the quick REST box."
         if all(isinstance(v, int | float) for v in lows + highs):
             result["bounding_box"] = {
                 "min": units.point_from_meters(lows),
@@ -200,6 +229,7 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         include_edges: Annotated[
             bool, Field(description="Also list edges (needed for fillet / chamfer).")
         ] = True,
+        configuration: Configuration | None = None,
     ) -> dict[str, Any]:
         """List the faces (and optionally edges) of each part with their IDs, geometry type,
         area, a point on the face and its outward normal, all in the configured length unit. Use
@@ -209,7 +239,11 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         units = app.units
         data = await app.client.get(
             f"/partstudios/d/{q(document_id)}/w/{q(wid)}/e/{q(element_id)}/bodydetails",
-            {"includeGeometricData": True, "partIds": [part_id] if part_id else None},
+            {
+                "includeGeometricData": True,
+                "partIds": [part_id] if part_id else None,
+                "configuration": configurations.encode(configuration, units),
+            },
         )
         bodies_out = []
         for body in data.get("bodies") or []:

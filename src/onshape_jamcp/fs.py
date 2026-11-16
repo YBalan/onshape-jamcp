@@ -1,5 +1,6 @@
 """FeatureScript helpers: decoding evaluation results and the scripts this server runs itself."""
 
+import re
 from typing import Any
 
 #: Onshape's built-in origin planes. Their internal IDs are *looked up* via FeatureScript rather
@@ -47,6 +48,46 @@ def unwrap(node: Any) -> Any:
     if "value" in body:
         return unwrap(body["value"])
     return {k: unwrap(v) for k, v in body.items() if k not in {"btType", "typeTag"}}
+
+
+_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def is_identifier(name: str) -> bool:
+    return bool(_IDENTIFIER.match(name))
+
+
+def variables_script(kinds: dict[str, str]) -> str:
+    """FeatureScript returning ``{name: number}`` for Part Studio variables.
+
+    ``kinds`` maps each variable to LENGTH (result in meters), ANGLE (degrees) or NUMBER.
+    """
+    unit = {"LENGTH": " / meter", "ANGLE": " / degree", "NUMBER": ""}
+    lines = []
+    for name, kind in kinds.items():
+        if not is_identifier(name) or kind not in unit:  # also guards against script injection
+            raise ValueError(f"Not a variable: {name!r} ({kind!r})")
+        lines.append(f'out["{name}"] = getVariable(context, "{name}"){unit[kind]}; ')
+    return (
+        "function(context is Context, queries) { var out = {}; " + "".join(lines) + "return out; }"
+    )
+
+
+def tight_box_script(by_part: bool) -> str:
+    """FeatureScript returning ``[minX, minY, minZ, maxX, maxY, maxZ]`` (meters) of Onshape's
+    tight bounding box. The REST ``boundingboxes`` call is not tight for swept surfaces such as
+    threads (seen live: 0.5 mm too large on each side)."""
+    target = (
+        "queries.part" if by_part else "qBodyType(qEverything(EntityType.BODY), BodyType.SOLID)"
+    )
+    return (
+        "function(context is Context, queries) { "
+        # NOTE: `box` is a reserved word in FeatureScript, hence `extent`.
+        f'var extent = evBox3d(context, {{"topology" : {target}, "tight" : true}}); '
+        "return [extent.minCorner[0] / meter, extent.minCorner[1] / meter, "
+        "extent.minCorner[2] / meter, extent.maxCorner[0] / meter, "
+        "extent.maxCorner[1] / meter, extent.maxCorner[2] / meter]; }"
+    )
 
 
 def plane_id_script(plane_name: str) -> str:

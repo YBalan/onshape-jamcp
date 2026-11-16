@@ -34,6 +34,9 @@ _NONCE_ALPHABET = string.ascii_letters + string.digits
 _JSON_ACCEPT = "application/json;charset=UTF-8; qs=0.09"
 _MAX_REDIRECTS = 5
 _MAX_RATE_LIMIT_RETRIES = 2
+# A 429 that asks for longer than this is a per-endpoint DAILY limit (seen live: Retry-After
+# 80721 s on GET .../features while every other endpoint was fine). Retrying cannot help.
+_MAX_RETRYABLE_WAIT = 60.0
 
 Expect = Literal["json", "bytes", "text"]
 
@@ -76,6 +79,25 @@ def encode_query(params: dict[str, Any] | None) -> str:
         for item in values:
             cleaned.append((key, str(item).lower() if isinstance(item, bool) else str(item)))
     return urlencode(cleaned)
+
+
+def _retry_after_seconds(response: httpx.Response) -> float:
+    try:
+        return float(response.headers.get("retry-after", "1") or 1)
+    except ValueError:
+        return 1.0
+
+
+def _rate_limit_hint(response: httpx.Response) -> str:
+    wait = _retry_after_seconds(response)
+    if wait > _MAX_RETRYABLE_WAIT:
+        hours = wait / 3600
+        return (
+            f"Onshape's daily limit for THIS endpoint is used up and resets in about "
+            f"{hours:.1f} h; other endpoints still work. Use fewer calls of this kind "
+            f"(for example list_features / feature status reads) and try again later"
+        )
+    return _HINTS[429]
 
 
 def _error_message(response: httpx.Response) -> str:
@@ -250,7 +272,10 @@ class OnshapeClient:
                     f"Could not reach Onshape at {self._settings.base_url}: {type(exc).__name__}"
                 ) from None
             if response.status_code == 429 and attempt < _MAX_RATE_LIMIT_RETRIES:
-                delay = min(float(response.headers.get("retry-after", "1") or 1), 15.0)
+                wait = _retry_after_seconds(response)
+                if wait > _MAX_RETRYABLE_WAIT:
+                    return response  # a daily limit: fail now, with a clear message
+                delay = min(wait, 15.0)
                 log.warning("Rate limited by Onshape; retrying in %.1fs", delay)
                 await asyncio.sleep(delay)
                 continue
@@ -267,7 +292,9 @@ class OnshapeClient:
                 response.status_code,
                 _error_message(response),
                 parsed,
-                hint=_HINTS.get(response.status_code),
+                hint=_rate_limit_hint(response)
+                if response.status_code == 429
+                else _HINTS.get(response.status_code),
             )
         if expect == "bytes":
             return response.content
