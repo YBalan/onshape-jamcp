@@ -6,11 +6,15 @@ documents, model parts, measure them, look at them and export them - in **millim
 with a switch for **inches**, and a switch that decides whether the assistant gets to **see
 screenshots** (which costs tokens) or not.
 
-> **Status: alpha, verified live.** 140+ automated tests run against a simulated Onshape, and
-> [`scripts/smoke_test.py`](scripts/smoke_test.py) passed **31/31 checks against a real Onshape
-> account** (free plan, 2026-11-14): sketch → extrude → fillet → hole → edit → screenshot → STEP/STL
-> export, with orientation and dimensions measured. Chamfer, assemblies with mates and paid-plan
-> behavior are not yet verified live - see [what is verified](docs/development.md#verification-status-read-this-before-trusting-a-tool).
+> **Status: alpha, verified live.** 440+ automated tests run against a simulated Onshape, and the
+> tools were checked against real Onshape accounts (free plan) on geometry with a known answer.
+> [`scripts/smoke_test.py`](scripts/smoke_test.py) passed **31/31 checks** (2026-11-14): sketch →
+> extrude → fillet → hole → edit → screenshot → STEP/STL export, with orientation and dimensions
+> measured. On 2026-11-16 chamfer, assemblies with mates, ThreadCreator threads, part naming,
+> variables, configurations, patterns, mirror, revolve, shell, boolean and OAuth sign-in were checked
+> the same way, and 87 of those checks were re-run on a fresh account. **Not yet verified live:**
+> paid-plan and enterprise behavior, threads on a configurable bolt under M18, and OAuth over a real
+> one-hour expiry - see [what is verified](docs/development.md#verification-status-read-this-before-trusting-a-tool).
 > Re-run the smoke test on your own account (see [below](#verify-it-works-against-your-account)).
 
 ## Highlights
