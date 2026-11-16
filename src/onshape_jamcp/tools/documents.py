@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 from mcp.server.mcpserver import MCPServer
 from pydantic import Field
 
+from .. import names
 from ..app import App
 from ..client import q
 from ..errors import InputError, OnshapeError
@@ -12,6 +13,17 @@ from .common import DocumentId, Registrar, WorkspaceId
 
 _SCOPE_FILTER = {"mine": 0, "created": 1, "shared": 2, "public": 4, "recent": 5}
 _SORT_COLUMN = {"modified": "modifiedAt", "created": "createdAt", "name": "name"}
+
+
+def _element_entry(e: dict[str, Any]) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "element_id": e.get("id"),
+        "name": e.get("name"),
+        "type": e.get("elementType"),
+    }
+    if names.is_default_tab_name(e.get("name")):
+        entry["has_default_name"] = True  # rename it to say what it holds
+    return entry
 
 
 def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
@@ -60,7 +72,9 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         document_id: DocumentId, workspace_id: WorkspaceId = None
     ) -> dict[str, Any]:
         """Describe one document: its main workspace ID and every element (tab) in it - Part
-        Studios, Assemblies, Drawings, imported files - with their element IDs and types."""
+        Studios, Assemblies, Drawings, imported files - with their element IDs and types. A tab
+        flagged has_default_name still carries Onshape's placeholder name: rename it with `rename`
+        to say what it holds."""
         doc = await app.client.get(f"/documents/{q(document_id)}")
         wid = workspace_id or (doc.get("defaultWorkspace") or {}).get("id")
         if not wid:
@@ -74,8 +88,7 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             "modified_at": doc.get("modifiedAt"),
             "url": f"{app.settings.base_url}/documents/{document_id}/w/{wid}",
             "elements": [
-                {"element_id": e.get("id"), "name": e.get("name"), "type": e.get("elementType")}
-                for e in (elements if isinstance(elements, list) else [])
+                _element_entry(e) for e in (elements if isinstance(elements, list) else [])
             ],
         }
 
@@ -113,10 +126,7 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         elements: list[dict[str, Any]] = []
         if did and wid:
             listed = await app.client.get(f"/documents/d/{q(did)}/w/{q(wid)}/elements")
-            elements = [
-                {"element_id": e.get("id"), "name": e.get("name"), "type": e.get("elementType")}
-                for e in (listed if isinstance(listed, list) else [])
-            ]
+            elements = [_element_entry(e) for e in (listed if isinstance(listed, list) else [])]
         return {
             "document_id": did,
             "workspace_id": wid,

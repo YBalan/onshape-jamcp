@@ -25,7 +25,28 @@ create_document + create_element start from scratch.
 new/add/remove) -> fillet / chamfer. Use list_features to check every feature reports OK.
 4. Verify: get_part_properties (dimensions), get_body_details (face/edge IDs), \
 capture_screenshot (visual check; images cost tokens only when screenshot review is on).
-5. Anything else: onshape_api_request / add_feature / run_featurescript.
+5. Custom features (Feature Studio scripts such as Thread Creator): list_custom_features \
+-> add_custom_feature. ThreadCreator takes the selected face as the thread's MAJOR diameter \
+(a nut's hole must be Ø10 for M10, not the tap-drill size) and defaults to internal ANSI \
+threads: pass internalThreads, threadProfile (ISO_STD) and the pitch p explicitly. Check the \
+result by volume, not only by status. Details: docs/threads.md in the repository.
+6. Anything else: onshape_api_request / add_feature / run_featurescript.
+Defaults for every model, unless the user says otherwise: \
+(a) NAME things - give each part a descriptive name (extrude part_name / rename) and rename a \
+tab that still says "Part Studio N" or "Assembly N"; keep names the user chose. Extrudes are \
+named with their size by default ("Extrude 8 mm", "Cut 3 mm", "Extrude #head_h"); pass \
+hole=true for a drilled hole (named "Hole", no size). \
+(b) Put key dimensions (diameter, length, pitch, wall, ...) in VARIABLES with set_variable and \
+use "#name" for sizes in sketches (circle, rectangle width/height, hexagon), extrude depth, \
+fillets and thread pitch; use plain numbers only for incidental values. \
+Only when the user asks: ASSEMBLIES (insert_instance with the first part fixed, then \
+add_mate: check the positions it returns - an accepted mate is not proof it moved \
+anything) and CONFIGURATIONS (set_configuration_input, set_variable by_option, \
+then pass configuration to get_part_properties / capture_screenshot). \
+Fewer requests: set many variables with set_variable(variables={...}) and change several \
+features with update_feature(updates=[...]) - each is one Onshape request however many. \
+Onshape limits each endpoint per day: avoid needless list_features calls and read a 429 \
+message that says "daily limit" as "stop retrying".
 Never guess IDs - read them from tool results."""
 
 

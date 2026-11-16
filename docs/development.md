@@ -25,6 +25,7 @@ src/onshape_jamcp/
   fs.py           FeatureScript helpers: unwrap() typed results, plane-ID script
   sketch.py       Shape models (pydantic) -> BTMSketch-151 JSON
   features.py     extrude / fillet / chamfer JSON builders, feature-response summary
+  custom_features.py  Feature Studio ("custom") features: spec summaries, spec -> feature JSON
   views.py        named camera views for screenshots
   server.py       build_server(): MCPServer + instructions + lifespan
   tools/          one module per theme; each has register(mcp, app, tool)
@@ -117,7 +118,69 @@ The live run found and fixed bugs a simulation could not, which is why the simul
 | STL `units` must be lowercase (`millimeter`), contrary to the OpenAPI spec | Spec ≠ behavior; verify live. |
 | `Top` plane resolved to `JDC` (a remembered "Front = JDC" was wrong) | Why plane IDs are looked up, never hard-coded. |
 
-Still unverified live (not covered by the smoke test): `chamfer`, `delete_feature` on a feature
+**Custom features (`list_custom_features`, `add_custom_feature`), checked live on 2026-11-16** with
+the public ThreadCreator Feature Studio (a Parametric Products "Screw Creator"):
+
+| Found live | Consequence |
+|---|---|
+| A Part Studio's `featurespecs` (9 MB, 91 specs) lists no account-toolbar scripts | Discovery needs a Feature Studio URL, or the script used once in the Part Studio. |
+| A Feature Studio's spec reports the *local* namespace `e<element>::m<microversion>`, even for a version-pinned fetch | `qualify_namespace` builds `d<doc>::v<version>::e<element>::m<microversion>` for another document. Onshape resolved it (the studio's spec appeared in the Part Studio's specs). |
+| Spec `defaultValue`s are full `BTMParameter`s with a `nodeId` | The builder copies them and drops `nodeId`. |
+| Quantity defaults often have `expression: ""` and the number in `value` with a per-parameter `units` (`meter`, `degree`, `radian`) | Defaults are shown from `value`+`units`; they are sent back untouched, and Onshape fills the expression itself. |
+| The POST reply said `OK` for a feature that was `ERROR` after regeneration | `add_custom_feature` re-reads the feature list for the real status. |
+| The feature state has no error text (`getFeatureStatus` only gives `REGEN_ERROR`) | Failures cannot be explained through the API. |
+| A feature in another document's namespace came back `ERROR` while the same call with the script's own namespace was fine. The cause: **enum parameters repeat the namespace** (`"namespace"` inside `threadProfile`, `diameterType`, `lengthType`), and the spec's copy was still the local `e..::m..` form | `qualify_namespace` rewrites every occurrence, not only the feature's. After that the public ThreadCreator threaded a test cylinder with status `OK`. (An earlier note here blamed the script's editing-logic function; that was wrong.) |
+| The UI stores the script's name template as the feature name (`#screwfriendlyname`) and renders it | The default feature name is the spec's `featureNameTemplate`. |
+
+**Naming, variables, configurations, assemblies (2026-11-16).** Verified live unless noted:
+
+| Area | Result |
+|---|---|
+| Names | `rename` sets the Name metadata property of a part or tab (same property ID for both); `extrude(part_name=...)` and the `has_default_name` flags work. |
+| Variables | `assignVariable` with `mode`/`variableType`/`name`/`lengthValue` is enough. A sketch dimension constraint (`DIAMETER`, `RADIUS`, `LENGTH`) with `#name` follows the variable: a circle, a constrained regular hexagon and a rectangle all resized when the variable changed. |
+| Configurations | `POST .../configuration` defines a list or number input (the read-back omits `parameterType`, so inputs are told apart by `btType`). A configured variable value is a `BTMParameterConfigured` whose inner values carry **no** `parameterId` (Onshape rejects them otherwise). `?configuration=Size=M18` re-evaluates the model. |
+| Tight bounding box | The REST `boundingboxes` is loose for swept surfaces (an M10 nut: 9.45 mm instead of 8.4); `evBox3d` with `tight: true` is exact. `box` is a reserved word in FeatureScript. |
+| Scoped intersect | An unscoped `intersect` extrude deleted a part that did not overlap the tool body; `only_parts` (`defaultScope: false` + `booleanScope`) is accepted. The tool now refuses the unscoped case when several parts exist. |
+| Assemblies | Inserting parts works (`POST .../instances`, empty reply; read instances back with `GET`). **Mates work once built the real way.** First attempts (`BTMAssemblyFeature-887` with geometry queries straight in `mateConnectorsQuery`, 4 styles) were accepted with status `OK` and moved nothing. A hand-made cylindrical mate showed the real structure: a `BTMMate-64` with a `mateConnectors` list of two implicit `BTMMateConnector-66` (each an `originQuery` of `BTMInferenceQueryWithOccurrence-1083`: `inferenceType`, `deterministicIds`, `path` = [instance]) and a `mateConnectorsQuery` of `BTMFeatureQueryWithOccurrence-157` pointing at those connector feature IDs. The compressed `entityQuery` blob is not needed; a `center` on an edge needs the edge ID (a face ID alone gives `ERROR`). Solved positions appear in the assembly's `occurrences[].transform` and persist after the mate is deleted. Verified numerically: fastened origin to nut face z = 0.000 mm, `offset` 5.000 mm, cylindrical axes aligned. A threaded face's centroid is about 0.19 mm off the thread axis. |
+| Batching | There is no general batch API. `POST .../features/updates` (`BTUpdateFeaturesCall-1748`) updated two variables in one request and the model followed; the reply includes each feature's regenerated status; a `name` in the request is **ignored**; it works for std features too (an extrude's depth). `set_variable(variables=...)`, `update_feature(updates=...)` and the spec cache are covered by tests but not yet exercised live (the feature-list endpoint was rate limited); the default extrude names were checked live. |
+| Rate limits | Each endpoint has its own daily limit: `GET .../features` returned `429`, `Retry-After: 80721`, remaining `0`, while other endpoints showed 3000. The client no longer retries a limit longer than a minute. |
+| Not verified | The complete parametric bolt and nut (threads under `Size=M18`): the run was cut short by that rate limit. Exporting a configuration. A number input inside an expression. |
+
+**Replay check (2026-11-16).** A ThreadCreator instance made by hand in the UI (a different copy of the
+script than the public one) was read back with `list_features(feature_id=...)`. Building the same
+feature with `build_custom_feature` from that copy's Feature Studio **version URL** (derived from the
+instance's own namespace) reproduced its namespace, name and all 16 parameters exactly (0 differences).
+`add_custom_feature` then threaded a separate test cylinder with it (status `OK`; the stored feature
+matched the original parameter for parameter); `update_feature` on that custom feature also worked.
+
+**Internal thread (2026-11-16).** An M10 nut (16 mm across flats, 8.4 mm high, Ø10 hole) threaded with
+`internalThreads: true`: status `OK`, +96.5 mm³ of ridges, minimum axis-to-face distance 4.25 mm
+(Ø8.5 minor). The selected face is the thread's major diameter; `diameterType` and `majorDiameter`
+made no difference when a face was selected.
+
+**ThreadCreator parameter matrix (2026-11-16).** Each variant was added to a temporary Ø10 x 40 mm
+cylinder and measured with FeatureScript point probes (is a point inside the body?), then deleted:
+
+| Parameter | Observed |
+|---|---|
+| `leftHanded` | The helix is mirrored: a quarter-turn shifts the pattern by 3p/4 instead of p/4. |
+| `numStarts` = 2 | The quarter-turn shift doubles (0.375 to 0.75 mm); `p` stays the spacing of adjacent threads. |
+| `lengthType` `LENGTH` 6 mm / `TURNS` 4 | Identical result: a 6.5 mm thread at the free end, 83.3 mm³ removed (6/40 of a full thread). |
+| `oppositeEnd` | The same 6 mm thread moves to the other end of the cylinder. |
+| `p` = 2.0 | Period 2.0 mm, deeper thread (716.7 vs 551.5 mm³). |
+| `threadProfile` | `ISO_STD` and `ANSI_STD` give identical geometry; `ISO_SQUARE` = `ANSI_SQUARE`; `ACME` and `TRAPEZOIDAL` each differ. |
+| `taperFirstEnd` + `taperFirstEndAngle` + `leadInPitches` | Accepted (status OK); the effect is small (+0.66 mm³), so it is not confirmed beyond that. |
+| `diameterType`, `majorDiameter` | No effect while a face is selected (the face sets the diameter). |
+
+Not checked: several faces in `refChoice`, and the non-default options on an *internal* thread
+(only the nut with the defaults above was built).
+
+Also verified live in the same session: `chamfer` (tip chamfer of an M10 bolt; volume change matched
+the geometry), polygon sketches, `qContainsPoint` edge selection through `run_featurescript`.
+The smoke test only checks that `list_custom_features` runs; to also try a real script pass a
+Feature Studio version URL: `uv run python scripts/smoke_test.py --custom-feature-studio <url>`.
+
+Still unverified live (not covered by the smoke test): `delete_feature` on a feature
 others depend on, `add_feature` with non-trivial JSON, Assembly with instances/mates, configured
 (parametric) Part Studios, imperial output on real data, enterprise base URLs, and Onshape's
 paid-plan behavior. Run the smoke test after any change to `sketch.py`, `features.py`,

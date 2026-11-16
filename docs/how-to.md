@@ -12,6 +12,7 @@ assistant when it goes off course. Lengths below are millimeters (the default); 
 - [Measure and verify](#measure-and-verify)
 - [Export STEP / STL](#export-step--stl)
 - [Browse safely with read-only mode](#browse-safely-with-read-only-mode)
+- [Use a custom feature such as Thread Creator](#use-a-custom-feature-such-as-thread-creator)
 - [Do something the tools don't cover (revolve, patterns, holes, ...)](#do-something-the-tools-dont-cover)
 - [Use an enterprise Onshape](#use-an-enterprise-onshape)
 - [Recover from a failed feature](#recover-from-a-failed-feature)
@@ -94,6 +95,52 @@ Set `ONSHAPE_READ_ONLY=true`. All tools that create or change things disappear f
 and `onshape_api_request` only allows `GET`. Great for *"summarize what's in my documents"* or
 *"review this model"* sessions. Pair it with an API key that only has the *read* scope for a hard
 guarantee.
+
+## Use a custom feature such as Thread Creator
+
+> *Thread the shank of this bolt M10 × 1.5 with ThreadCreator.*
+
+**Threads have their own page: [Threads and custom features](threads.md)** - what you need, the rule
+for which diameter to model (it decides whether a nut comes out right), a worked bolt and nut, every
+ThreadCreator option, and how to check the result. The rest of this recipe is the general mechanism.
+
+Custom features (Feature Scripts) are written in a Feature Studio tab and are not part of Onshape's
+standard library. Two tools handle them:
+
+1. `list_custom_features(document_id, element_id)` → every custom feature this Part Studio can use:
+   its `feature_type`, `namespace` and each parameter's `id`, `type`, `unit`, `default` and
+   `options`. It also lists custom features the Part Studio already contains
+   (`used_in_this_part_studio`).
+2. `add_custom_feature(feature_type="…", parameters={…})`. Lengths are numbers in your unit,
+   angles are degrees, enums take one of the listed `options`, selections (`type: "query"`) are
+   lists of face/edge IDs from `get_body_details`. Anything you leave out keeps the script's own
+   default. The new feature's `status` tells you whether Onshape accepted it; change it afterwards
+   with `update_feature`.
+
+**If the script you added to your account is not listed.** Onshape stores the toolbar's Feature
+Scripts as an *account setting*, and a Part Studio's feature specs do not include them (checked
+live), so a script only shows up once the Part Studio uses it. Either:
+
+- click it once in that Part Studio's *Custom features* toolbar in Onshape (and delete the feature if
+  you did not want it), then call `list_custom_features` again; or
+- give the assistant the URL of the Feature Studio tab that defines it as `feature_studio_url`. For a
+  Feature Studio in *another* document it must be a **version** URL
+  (`…/documents/<did>/v/<version>/e/<eid>`): Onshape links custom features to a version. The tool
+  then addresses the script as `d<doc>::v<version>::e<element>::m<microversion>`, which Onshape
+  resolves (checked live).
+
+**Check the result.** Onshape's reply to the add call can still say `OK` for a feature that fails
+when it is regenerated, so `add_custom_feature` reads the status back and reports the real one.
+The REST API gives only the status, not Onshape's error text.
+
+**If a feature comes back `ERROR`.** Onshape gives no reason through the API, and a script's own checks
+may live in code you cannot read. Create **one instance by hand** in Onshape with the settings you
+want: `list_features(feature_id=…)` shows exactly what Onshape produces, to compare against or to
+replay with `add_feature`. This is how the ThreadCreator replay was verified (see
+[development](development.md#verification-status-read-this-before-trusting-a-tool)).
+
+Threads in particular (bolt and nut examples, the major-diameter rule for internal threads, the
+ThreadCreator options and their defaults) are covered in [Threads and custom features](threads.md).
 
 ## Do something the tools don't cover
 

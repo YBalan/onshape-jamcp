@@ -3,12 +3,12 @@
 from typing import Annotated, Any
 
 from mcp.server.mcpserver import MCPServer
-from pydantic import Field
+from pydantic import BaseModel, Field
 
-from .. import features, sketch
+from .. import features, names, sketch
 from ..app import App
 from ..client import q
-from ..errors import InputError
+from ..errors import InputError, OnshapeError
 from .common import DocumentId, ElementId, FeatureId, Registrar, WorkspaceId
 
 Length = Annotated[
@@ -19,6 +19,15 @@ Length = Annotated[
     ),
 ]
 _ANGLE_SUFFIXES = ("deg", "degree", "degrees", "rad", "radian", "radians")
+
+
+class FeatureUpdate(BaseModel):
+    """New parameter values for one feature (used to change several features in one request)."""
+
+    feature_id: str = Field(min_length=1, description="Feature ID from list_features.")
+    parameters: dict[str, float | int | str | bool] = Field(
+        min_length=1, description="Parameter ID -> new value, as for a single update."
+    )
 
 
 def _features_path(document_id: str, workspace_id: str, element_id: str) -> str:
@@ -40,8 +49,10 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             Field(
                 min_length=1,
                 max_length=sketch.MAX_SHAPES,
-                description="2D shapes to draw: rectangle, circle, line, arc or polygon. Closed "
-                "shapes become regions that `extrude` can turn into solids.",
+                description="2D shapes to draw: rectangle, circle, hexagon, line, arc or polygon. "
+                "Closed shapes become regions that `extrude` can turn into solids. Sizes "
+                "(diameter, radius, width, height, across_flats) may be variables such as "
+                "'#shank_diameter': the sketch then follows the variable.",
             ),
         ],
         plane: Annotated[
@@ -61,7 +72,27 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         get_part_properties or a screenshot."""
         wid = await app.workspace(document_id, workspace_id)
         plane_id = await app.plane_id(document_id, wid, element_id, plane)
-        body = sketch.build_sketch_feature(name, plane_id, shapes, app.units)
+        values: dict[str, float] = {}
+        if names_used := sketch.referenced_variables(shapes):
+            # One FeatureScript call. The feature list (a limited endpoint) is only read to
+            # explain a failure.
+            try:
+                values = await app.variable_values(
+                    document_id, wid, element_id, {n: "LENGTH" for n in names_used}
+                )
+            except OnshapeError:
+                values = {}
+            if unresolved := sorted(names_used - set(values)):
+                defined = {v["name"] for v in await app.variables(document_id, wid, element_id)}
+                missing = [n for n in unresolved if n not in defined]
+                shown = ", ".join("#" + n for n in (missing or unresolved))
+                raise InputError(
+                    f"Variable(s) {shown} are not defined in this Part Studio. Create them first "
+                    "with set_variable."
+                    if missing
+                    else f"Variable(s) {shown} are not lengths; sketch sizes must be lengths."
+                )
+        body = sketch.build_sketch_feature(name, plane_id, shapes, app.units, values)
         result = await add(document_id, element_id, wid, body)
         result["plane"] = plane
         return result
@@ -87,24 +118,94 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         opposite_direction: Annotated[
             bool, Field(description="Flip to the other side of the sketch plane.")
         ] = False,
-        name: Annotated[str, Field(min_length=1, max_length=100)] = "Extrude",
+        name: Annotated[
+            str | None,
+            Field(
+                min_length=1,
+                max_length=100,
+                description="Feature name. Defaults to its size: 'Extrude 8 mm' ('Cut 8 mm' for "
+                "operation 'remove', 'Hole' with hole=true); with a variable depth the name "
+                "shows the variable, e.g. 'Extrude #head_h'.",
+            ),
+        ] = None,
+        hole: Annotated[
+            bool,
+            Field(
+                description="The cut is a round drilled hole (use operation 'remove'): it is "
+                "named 'Hole', without a size."
+            ),
+        ] = False,
+        only_parts: Annotated[
+            list[str] | None,
+            Field(
+                description="Part IDs (from list_parts) that operations 'add', 'remove' and "
+                "'intersect' should affect. By default Onshape applies them to every part the "
+                "extrusion touches, which matters when several parts share one Part Studio "
+                "(e.g. a bolt and a nut)."
+            ),
+        ] = None,
+        part_name: Annotated[
+            str | None,
+            Field(
+                min_length=1,
+                max_length=200,
+                description="Name for the part an operation 'new' creates, e.g. 'M10x40 Hex "
+                "Bolt'. Give one unless the user chose a name: otherwise the part stays "
+                "'Part N'.",
+            ),
+        ] = None,
         workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
         """Extrude all closed regions of a sketch into a solid, or cut with it (operation
         'remove'). The default direction follows the sketch plane's normal. For a sketch on a
         part's own face that normal points OUT of the part, so to cut a hole or pocket INTO the
         part pass opposite_direction=true (verified on live Onshape; without it nothing is
-        cut). Always confirm with get_part_properties - the volume must drop."""
+        cut). Always confirm with get_part_properties - the volume must drop. For operation 'new'
+        the reply lists the created parts (parts_created) and names them when part_name is
+        given."""
+        wid = await app.workspace(document_id, workspace_id)
+        existing = (
+            await app.parts(document_id, wid, element_id)
+            if operation in ("new", "intersect")
+            else []
+        )
+        if operation == "intersect" and not only_parts and len(existing) > 1:
+            # Verified live: an unscoped intersect deleted a part that did not overlap the tool.
+            raise InputError(
+                f"This Part Studio has {len(existing)} parts and an unscoped 'intersect' deletes "
+                "every part that does not overlap the new body. Pass only_parts with the part "
+                "IDs to intersect (from list_parts)."
+            )
+        before = {p.get("partId") for p in existing} if operation == "new" else None
+        depth_text = app.units.length_expression(depth)
         body = features.extrude_feature(
-            name=name,
+            name=name or names.extrude_name(operation, depth_text, symmetric=symmetric, hole=hole),
             sketch_feature_id=sketch_feature_id,
             depth=depth,
             operation=operation,
             units=app.units,
             opposite_direction=opposite_direction,
             symmetric=symmetric,
+            only_parts=only_parts,
         )
-        return await add(document_id, element_id, workspace_id, body)
+        result = await add(document_id, element_id, wid, body)
+        if before is not None:
+            after = await app.parts(document_id, wid, element_id)
+            created = [p for p in after if p.get("partId") not in before]
+            for index, part in enumerate(created, start=1):
+                if part_name:
+                    new_name = part_name if len(created) == 1 else f"{part_name} {index}"
+                    await app.rename(document_id, wid, element_id, new_name, part.get("partId"))
+                    part["name"] = new_name
+            result["parts_created"] = [
+                {"part_id": p.get("partId"), "name": p.get("name")} for p in created
+            ]
+            if any(names.is_default_part_name(p.get("name")) for p in created):
+                result["note"] = (
+                    "The new part still has a placeholder name: give it a descriptive one with "
+                    "rename (or part_name)."
+                )
+        return result
 
     @tool(title="Fillet edges", writes=True)
     async def fillet(
@@ -144,9 +245,14 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
     async def update_feature(
         document_id: DocumentId,
         element_id: ElementId,
-        feature_id: FeatureId,
+        feature_id: Annotated[
+            str | None,
+            Field(
+                min_length=1, description="Feature ID (list_features) when changing one feature."
+            ),
+        ] = None,
         parameters: Annotated[
-            dict[str, float | int | str | bool],
+            dict[str, float | int | str | bool] | None,
             Field(
                 min_length=1,
                 description="Map of parameter ID to new value, e.g. {'depth': 25} for an extrude "
@@ -155,31 +261,103 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
                 "expressions ('#width'). Booleans and enum names are set as-is. Use "
                 "list_features with feature_id to see a feature's parameter IDs.",
             ),
-        ],
+        ] = None,
         name: Annotated[str | None, Field(description="Optional new feature name.")] = None,
+        updates: Annotated[
+            list[FeatureUpdate] | None,
+            Field(
+                min_length=1,
+                description="Change SEVERAL features in ONE Onshape request instead of "
+                "feature_id + parameters. Names are not changed in this form.",
+            ),
+        ] = None,
         workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
-        """Change parameters of an existing feature (for example make an extrude deeper or a
-        fillet larger) without rebuilding it. Dependent features rebuild automatically."""
+        """Change parameters of existing features (for example make an extrude deeper or a
+        fillet larger) without rebuilding them. Dependent features rebuild automatically. To
+        change several features at once pass `updates`: two requests in total, however many.
+        An automatically named extrude ('Extrude 8 mm') gets its name refreshed when its depth
+        changes (single-feature form)."""
+        if updates:
+            if feature_id or parameters or name:
+                raise InputError("Use either `updates` or feature_id + parameters, not both.")
+        elif not (feature_id and parameters):
+            raise InputError("Give feature_id and parameters, or `updates`.")
         wid = await app.workspace(document_id, workspace_id)
         path = _features_path(document_id, wid, element_id)
         data = await app.client.get(path)
-        feature = next(
-            (f for f in data.get("features") or [] if f.get("featureId") == feature_id), None
-        )
-        if feature is None:
-            raise InputError(f"No feature with ID {feature_id!r}. Call list_features to see IDs.")
-        by_id = {p["parameterId"]: p for p in feature.get("parameters") or [] if "parameterId" in p}
-        for parameter_id, value in parameters.items():
-            param = by_id.get(parameter_id)
-            if param is None:
+        by_feature = {f.get("featureId"): f for f in data.get("features") or []}
+
+        def apply(feature_id: str, values: dict[str, Any]) -> tuple[dict, list[dict]]:
+            feature = by_feature.get(feature_id)
+            if feature is None:
                 raise InputError(
-                    f"Feature {feature_id} has no parameter {parameter_id!r}. "
-                    f"Available: {sorted(by_id)}."
+                    f"No feature with ID {feature_id!r}. Call list_features to see IDs."
                 )
-            _set_parameter(param, parameter_id, value, app)
+            by_id = {
+                p["parameterId"]: p for p in feature.get("parameters") or [] if "parameterId" in p
+            }
+            changed = []
+            for parameter_id, value in values.items():
+                param = by_id.get(parameter_id)
+                if param is None:
+                    raise InputError(
+                        f"Feature {feature_id} has no parameter {parameter_id!r}. "
+                        f"Available: {sorted(by_id)}."
+                    )
+                _set_parameter(param, parameter_id, value, app)
+                changed.append(param)
+            return feature, changed
+
+        if updates:
+            ids = [u.feature_id for u in updates]
+            if len(set(ids)) != len(ids):
+                raise InputError("List each feature once in `updates`.")
+            structs = []
+            for u in updates:
+                _, changed = apply(u.feature_id, u.parameters)
+                # Checked live: only the changed parameters are needed; a name sent here is ignored.
+                structs.append(
+                    {"btType": "BTMFeature-134", "featureId": u.feature_id, "parameters": changed}
+                )
+            response = await app.client.post(
+                f"{path}/updates",
+                {
+                    "btType": "BTUpdateFeaturesCall-1748",
+                    "features": structs,
+                    "updateSuppressionAttributes": False,
+                },
+            )
+            states = response.get("featureStates") or {}
+            return {
+                "updated": [
+                    {
+                        "feature_id": fid,
+                        "name": by_feature[fid].get("name"),
+                        "status": (states.get(fid) or {}).get("featureStatus", "UNKNOWN"),
+                    }
+                    for fid in ids
+                ],
+                "onshape_requests": 2,
+            }
+
+        assert feature_id and parameters
+        feature, _ = apply(feature_id, parameters)
+        by_id = {p.get("parameterId"): p for p in feature.get("parameters") or []}
         if name:
             feature["name"] = name
+        elif (
+            feature.get("featureType") == "extrude"
+            and "depth" in parameters
+            and names.is_auto_extrude_name(feature.get("name"))
+        ):  # keep "Extrude 8 mm" truthful when the depth changes
+            removing = (by_id.get("operationType") or {}).get("value") == "REMOVE"
+            symmetric = (by_id.get("endBound") or {}).get("value") == "SYMMETRIC"
+            feature["name"] = names.extrude_name(
+                "remove" if removing else "add",
+                str(by_id["depth"].get("expression")),
+                symmetric=symmetric,
+            )
         response = await app.client.post(
             f"{path}/featureid/{q(feature_id)}",
             {"btType": "BTFeatureDefinitionCall-1406", "feature": feature},
@@ -242,11 +420,12 @@ def _set_parameter(param: dict[str, Any], parameter_id: str, value: Any, app: Ap
         current = str(param.get("expression") or "").strip().lower()
         is_angle = current.endswith(_ANGLE_SUFFIXES)
         if isinstance(value, int | float):
-            expression = (
-                app.units.angle_expression(value)
-                if is_angle
-                else app.units.length_expression(value)
-            )
+            if param.get("isInteger"):  # a count (e.g. thread turns), not a length
+                expression = app.units.number_expression(value)
+            elif is_angle:
+                expression = app.units.angle_expression(value)
+            else:
+                expression = app.units.length_expression(value)
         else:
             expression = app.units.length_expression(value)
         param["expression"] = expression

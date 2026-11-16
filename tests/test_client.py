@@ -141,6 +141,30 @@ async def test_rate_limit_gives_up(monkeypatch):
     await client.aclose()
 
 
+async def test_a_daily_limit_is_not_retried_and_says_when_it_resets(monkeypatch):
+    """Seen live: Retry-After 80721 s on one endpoint while all others still worked."""
+    calls = []
+
+    async def no_sleep(_):
+        raise AssertionError("must not wait for a daily limit")
+
+    monkeypatch.setattr("onshape_jamcp.client.asyncio.sleep", no_sleep)
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(
+            429, headers={"retry-after": "80721", "x-rate-limit-remaining": "0"}, json={}
+        )
+
+    client = make_client(handler)
+    with pytest.raises(OnshapeError) as exc:
+        await client.get("/partstudios/d/x/w/y/e/z/features")
+    assert len(calls) == 1  # no pointless retries that would burn more calls
+    assert exc.value.status == 429
+    assert "22.4 h" in str(exc.value) and "THIS endpoint" in str(exc.value)
+    await client.aclose()
+
+
 async def test_redirect_to_onshape_host_is_resigned():
     paths = []
 

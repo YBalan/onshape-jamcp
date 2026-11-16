@@ -35,6 +35,9 @@ GROUPS: list[tuple[str, str, list[str]]] = [
             "get_part_properties",
             "get_body_details",
             "get_assembly",
+            "list_custom_features",
+            "list_variables",
+            "get_configuration",
             "run_featurescript",
         ],
     ),
@@ -49,7 +52,14 @@ GROUPS: list[tuple[str, str, list[str]]] = [
             "update_feature",
             "delete_feature",
             "add_feature",
+            "add_custom_feature",
         ],
+    ),
+    (
+        "Names, variables, configurations and assemblies",
+        "Defaults for tidy parametric models, plus the optional features that are used only when "
+        "asked for. See [Parametric modeling](parametric.md).",
+        ["rename", "set_variable", "set_configuration_input", "insert_instance", "add_mate"],
     ),
     (
         "Look & export",

@@ -3,11 +3,35 @@
 from mcp.server.mcpserver import MCPServer
 
 from ..app import App
-from . import documents, inspection, modeling, output, raw, system
+from . import (
+    assembly,
+    configurations,
+    custom,
+    documents,
+    inspection,
+    modeling,
+    naming,
+    output,
+    raw,
+    system,
+    variables,
+)
 from .common import make_registrar
 
 
 def register_all(mcp: MCPServer, app: App) -> None:
     tool = make_registrar(mcp, app)
-    for module in (system, documents, inspection, modeling, output, raw):
+    for module in (
+        system,
+        documents,
+        inspection,
+        variables,
+        configurations,
+        assembly,
+        modeling,
+        naming,
+        custom,
+        output,
+        raw,
+    ):
         module.register(mcp, app, tool)

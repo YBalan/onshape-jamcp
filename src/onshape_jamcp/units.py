@@ -142,6 +142,23 @@ class UnitSystem:
                 return text
         raise InputError(f"Cannot read {degrees!r} as an angle (degrees).")
 
+    @staticmethod
+    def number_expression(value: float | int | str) -> str:
+        """Expression for a unitless number (``"6"``, ``"1.5"``) or a free-form expression that
+        carries its own units (``"2 kg"``, ``"#count * 2"``). Used for counts, ratios and any
+        quantity that is neither a length nor an angle."""
+        if isinstance(value, bool):
+            raise InputError(f"Expected a number, got boolean {value!r}.")
+        if isinstance(value, int | float):
+            if not math.isfinite(value):
+                raise InputError(f"Number must be finite, got {value!r}.")
+            return _num(value)
+        if isinstance(value, str):
+            text = value.strip()
+            if text and _EXPRESSION_RE.match(text):
+                return text
+        raise InputError(f"Cannot read {value!r} as a number or an Onshape expression.")
+
 
 METRIC = UnitSystem(name="metric", length_unit="mm", decimals=4)
 IMPERIAL = UnitSystem(name="imperial", length_unit="in", decimals=5)

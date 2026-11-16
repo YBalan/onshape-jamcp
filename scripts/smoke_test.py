@@ -3,6 +3,7 @@
     uv run python scripts/smoke_test.py            # uses ONSHAPE_* from the environment / .env
     uv run python scripts/smoke_test.py --keep     # leave the test document in place
     uv run python scripts/smoke_test.py --public   # required on Onshape free plans
+    uv run python scripts/smoke_test.py --custom-feature-studio <Feature Studio tab URL>
 
 It creates a new document (private; public with --public), models a small part (plate, fillets,
 hole), measures it, takes a screenshot, exports STEP/STL and exercises the remaining tools, then
@@ -63,7 +64,7 @@ def close(a: float, b: float, tol: float = 0.05) -> bool:
     return math.isclose(a, b, abs_tol=tol)
 
 
-async def run(keep: bool, public: bool = False) -> bool:
+async def run(keep: bool, public: bool = False, custom_studio: str | None = None) -> bool:
     settings = Settings.from_env(os.environ)
     if not settings.has_credentials:
         print("Set ONSHAPE_ACCESS_KEY and ONSHAPE_SECRET_KEY (or put them in .env).")
@@ -112,6 +113,7 @@ async def run(keep: bool, public: bool = False) -> bool:
 
         try:
             await modeling(s, base, did, eid)
+            await custom_features(s, base, custom_studio)
         except Exception as exc:  # noqa: BLE001 - report, then still clean up
             check(False, "run aborted by an error", str(exc))
         finally:
@@ -346,6 +348,36 @@ async def modeling(s: Session, base: dict, did: str, eid: str) -> None:
     check(raw["response"].get("id") == did, "onshape_api_request GET", "")
 
 
+async def custom_features(s: Session, base: dict, studio_url: str | None) -> None:
+    print("\n11. Custom features (Feature Scripts)")
+    own = await s.call("list_custom_features", base)
+    check(
+        isinstance(own["custom_features"], list),
+        "list_custom_features runs on a Part Studio",
+        f"{len(own['custom_features'])} custom feature(s) known to it",
+    )
+    if not studio_url:
+        print("  (pass --custom-feature-studio <URL> to also add a real custom feature)")
+        return
+    listed = await s.call("list_custom_features", {**base, "feature_studio_url": studio_url})
+    found = listed["custom_features"]
+    check(bool(found), "the Feature Studio defines at least one custom feature", str(len(found)))
+    if not found:
+        return
+    first = found[0]
+    print(f"  using {first['feature_type']!r}: parameters {[p['id'] for p in first['parameters']]}")
+    added = await s.call(
+        "add_custom_feature",
+        {**base, "feature_type": first["feature_type"], "feature_studio_url": studio_url},
+    )
+    # A feature that needs a selection (a face, an edge) reports ERROR without one, so accepting
+    # the request is what is checked here; read the status below and look at the document.
+    check(bool(added.get("feature_id")), "add_custom_feature accepted by Onshape", str(added))
+    listed_after = await s.call("list_features", base)
+    ids = [f["feature_id"] for f in listed_after["features"]]
+    check(added.get("feature_id") in ids, "the custom feature is in the feature list", str(ids))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
@@ -356,10 +388,15 @@ def main() -> None:
         action="store_true",
         help="create the test document as PUBLIC (required on Onshape free plans)",
     )
+    parser.add_argument(
+        "--custom-feature-studio",
+        metavar="URL",
+        help="URL of a Feature Studio tab: also add one of its custom features to the test doc",
+    )
     parser.add_argument("--env-file", default=".env", help="optional KEY=VALUE file (default .env)")
     args = parser.parse_args()
     load_env_file(Path(args.env_file))
-    ok = asyncio.run(run(args.keep, args.public))
+    ok = asyncio.run(run(args.keep, args.public, args.custom_feature_studio))
     sys.exit(0 if ok else 1)
 
 

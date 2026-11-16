@@ -44,6 +44,14 @@ FeatureId = Annotated[
     Field(min_length=1, description="Feature ID as returned by list_features or a create tool."),
 ]
 
+Configuration = Annotated[
+    dict[str, str | float | int],
+    Field(
+        description="Configuration to evaluate, e.g. {'Size': 'M18'} (list inputs by option "
+        "name, number inputs as a value). Omit for the default configuration."
+    ),
+]
+
 Registrar = Callable[..., Callable[[Callable[..., Awaitable[Any]]], Callable[..., Awaitable[Any]]]]
 
 
