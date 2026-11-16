@@ -22,8 +22,10 @@ A part still called `Part 2` or a tab still called `Part Studio 1` says nothing 
 - `rename(element_id, name)` renames a tab (a Part Studio or Assembly); add `part_id` to rename one
   part. Onshape also renames the matching *BOM* tab of an assembly.
 - **Extrudes are named with their size**: `Extrude 8 mm`, `Cut 3 mm` (operation `remove`),
-  `Extrude 8 mm (symmetric)`. With a variable depth the name shows the variable (`Extrude #head_h`),
-  so it stays true when the variable changes. **Holes** get no size: pass `hole=true` and the extrude
+  `Extrude 8 mm (symmetric)`. With a variable depth the name shows the variable in brackets
+  (`Extrude (head_h)`), so it stays true when the variable changes. Never `#head_h`: in a feature
+  name Onshape reads `#word` as a parameter of that feature and shows `?` (variables themselves are
+  named after the variable, `d`, not `#d`). **Holes** get no size: pass `hole=true` and the extrude
   is named `Hole`. When you change an automatically named extrude's depth with `update_feature`
   (one feature at a time), its name is refreshed too.
 - Names you chose yourself are kept, and an explicit `name` always wins.
@@ -100,9 +102,11 @@ M18); and an input shaped like a UI-made one (generated ID, different label, `_3
 with a configured variable built the way `set_variable` builds it: volumes per variant, asked for by
 label and by ID, matched pi*r^2*h exactly (785.4 / 1570.8 / 2356.2 mm3), and a wrong option was
 refused. `set_variable` itself could not run live that day because it reads the feature list first
-(see [rate limits](#rate-limits)). **Not checked live:** the full threaded bolt and nut under M18 (the run was cut short by
-Onshape's [rate limit](#rate-limits)), exporting a variant (`export_model` has no `configuration`
-option yet), and a number input used inside an expression.
+(see [rate limits](#rate-limits)); on a fresh account it then did, including a variable configured by
+an input, a spoke count driven by a configuration (17979.92 / 23393.46 mm3) and the whole bolt and nut
+(without threads) under `Size=M10`, `M18` and `Length=60`. **Not checked live:** the threads on that
+bolt and nut under M18 (a new account has no ThreadCreator), exporting a variant (`export_model` has
+no `configuration` option yet), and a number input used inside an expression.
 
 ## Assemblies
 

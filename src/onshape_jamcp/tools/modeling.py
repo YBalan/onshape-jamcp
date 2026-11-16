@@ -125,7 +125,8 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
                 max_length=100,
                 description="Feature name. Defaults to its size: 'Extrude 8 mm' ('Cut 8 mm' for "
                 "operation 'remove', 'Hole' with hole=true); with a variable depth the name "
-                "shows the variable, e.g. 'Extrude #head_h'.",
+                "shows the variable, e.g. 'Extrude (head_h)'. Do not put '#word' in a name: "
+                "Onshape reads it as a parameter of the feature and shows '?'.",
             ),
         ] = None,
         hole: Annotated[

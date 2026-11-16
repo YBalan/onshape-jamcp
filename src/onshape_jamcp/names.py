@@ -13,10 +13,25 @@ _DEFAULT_TAB = re.compile(
     r"^(Part Studio|Assembly|Drawing|Feature Studio|Variable Studio)\s+\d+$", re.IGNORECASE
 )
 _DEFAULT_PART = re.compile(r"^Part\s+\d+$", re.IGNORECASE)
-# "Extrude 8 mm", "Cut 0.5 in", "Extrude #head_h (symmetric)": names this server generates.
+# "Extrude 8 mm", "Cut 0.5 in", "Extrude (head_h) (symmetric)": names this server generates. The
+# old "Extrude #head_h" form (which Onshape shows as "Extrude ?") is still recognised so that it
+# gets repaired when the depth changes.
 _AUTO_EXTRUDE = re.compile(
-    r"^(Extrude|Cut) (?:[-+]?\d[\d.]*\s?[A-Za-z]+|#[A-Za-z_]\w*)(?: \(symmetric\))?$"
+    r"^(Extrude|Cut) (?:[-+]?\d[\d.]*\s?[A-Za-z]+|\([^()#]+\)|#[A-Za-z_]\w*)(?: \(symmetric\))?$"
 )
+
+
+def shown(expression: str) -> str:
+    """An expression as it may appear in a feature NAME.
+
+    In a feature name Onshape reads ``#word`` as the value of the feature's own parameter called
+    ``word`` (its default name for a variable is ``###name = #value``, where ``##`` is a literal
+    ``#``) and shows ``?`` when there is no such parameter. A variable such as ``#head_h`` is
+    therefore written ``(head_h)``; plain sizes ("8 mm") are returned as they are.
+    """
+    if "#" not in expression:
+        return expression
+    return "(" + expression.replace("#", "") + ")"
 
 
 def is_default_tab_name(name: object) -> bool:
@@ -32,7 +47,7 @@ def extrude_name(operation: str, depth: str, *, symmetric: bool = False, hole: b
     if hole:
         return "Hole"
     verb = "Cut" if operation == "remove" else "Extrude"
-    return f"{verb} {depth}{' (symmetric)' if symmetric else ''}"[:100]
+    return f"{verb} {shown(depth)}{' (symmetric)' if symmetric else ''}"[:100]
 
 
 def _short(text: str) -> str:
@@ -40,15 +55,15 @@ def _short(text: str) -> str:
 
 
 def circular_pattern_name(count: str, angle: str) -> str:
-    """ "Circular pattern x6" (a variable shows as "x#spokes"); a partial angle is appended."""
-    suffix = "" if angle.replace(" deg", "") == "360" else f" over {angle}"
-    return _short(f"Circular pattern x{count}{suffix}")
+    """ "Circular pattern x6" (a variable shows as "x(spokes)"); a partial angle is appended."""
+    suffix = "" if angle.replace(" deg", "") == "360" else f" over {shown(angle)}"
+    return _short(f"Circular pattern x{shown(count)}{suffix}")
 
 
 def linear_pattern_name(count: str, distance: str, second: tuple[str, str] | None = None) -> str:
-    text = f"Linear pattern x{count} @ {distance}"
+    text = f"Linear pattern x{shown(count)} @ {shown(distance)}"
     if second:
-        text += f", x{second[0]} @ {second[1]}"
+        text += f", x{shown(second[0])} @ {shown(second[1])}"
     return _short(text)
 
 
@@ -57,11 +72,11 @@ def mirror_name(plane: str) -> str:
 
 
 def revolve_name(angle: str) -> str:
-    return _short(f"Revolve {angle}")
+    return _short(f"Revolve {shown(angle)}")
 
 
 def shell_name(thickness: str) -> str:
-    return _short(f"Shell {thickness}")
+    return _short(f"Shell {shown(thickness)}")
 
 
 def boolean_name(operation: str) -> str:

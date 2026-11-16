@@ -320,7 +320,10 @@ class TestExtrudeNames:
         assert await self.name_of(make_server, fake, depth="12 mm") == "Extrude 12 mm"
 
     async def test_a_variable_depth_shows_the_variable(self, make_server, fake):
-        assert await self.name_of(make_server, fake, depth="#head_h") == "Extrude #head_h"
+        # never "#head_h": Onshape reads #word in a name as a parameter of the feature -> "?"
+        assert await self.name_of(make_server, fake, depth="#head_h") == "Extrude (head_h)"
+        assert await self.name_of(make_server, fake, depth="#d / 2") == "Extrude (d / 2)"
+        assert await self.name_of(make_server, fake, depth="#t", operation="remove") == "Cut (t)"
 
     async def test_units_follow_the_setting(self, make_server, fake):
         name = await self.name_of(make_server, fake, depth=0.5, env={"ONSHAPE_UNITS": "imperial"})
@@ -363,6 +366,54 @@ class TestExtrudeNames:
             {**BASE, "feature_id": "F001", "parameters": {"depth": 30}, "name": "Mine"},
         )
         assert fake.features[0]["name"] == "Mine"
+
+    async def test_a_variable_name_is_refreshed_and_a_legacy_hash_name_is_repaired(
+        self, make_server, fake
+    ):
+        server = make_server()
+        await call(server, "extrude", {**self.ARGS, "depth": "#head_h"})
+        assert fake.features[0]["name"] == "Extrude (head_h)"
+        await call(
+            server, "update_feature", {**BASE, "feature_id": "F001", "parameters": {"depth": 12}}
+        )
+        assert fake.features[0]["name"] == "Extrude 12 mm"
+        # an old "Extrude #head_h" (shown as "Extrude ?" by Onshape) is fixed on the next change
+        fake.features[0]["name"] = "Extrude #head_h"
+        await call(
+            server, "update_feature", {**BASE, "feature_id": "F001", "parameters": {"depth": 7}}
+        )
+        assert fake.features[0]["name"] == "Extrude 7 mm"
+
+
+class TestNamesNeverStartAFeatureReference:
+    """In a feature name Onshape reads '#word' as a parameter of that feature (shown as '?')."""
+
+    def test_shown_writes_variables_in_brackets(self):
+        from onshape_jamcp import names
+
+        assert names.shown("8 mm") == "8 mm"
+        assert names.shown("#head_h") == "(head_h)"
+        assert names.shown("2 * #d + #t") == "(2 * d + t)"
+
+    def test_generated_names_contain_no_hash(self):
+        from onshape_jamcp import names
+
+        generated = [
+            names.extrude_name("new", "#depth", symmetric=True),
+            names.extrude_name("remove", "#cut"),
+            names.circular_pattern_name("#spokes", "#sweep"),
+            names.linear_pattern_name("#n", "#pitch", ("#rows", "#gap")),
+            names.revolve_name("#turn"),
+            names.shell_name("#wall"),
+        ]
+        assert all("#" not in n for n in generated), generated
+        assert generated[0] == "Extrude (depth) (symmetric)"
+        assert generated[3] == "Linear pattern x(n) @ (pitch), x(rows) @ (gap)"
+
+    async def test_variables_are_named_after_themselves(self, make_server, fake):
+        server = make_server()
+        await call(server, "set_variable", {**BASE, "variables": {"d": 10, "pitch": 1.5}})
+        assert [f["name"] for f in fake.features] == ["d", "pitch"]
 
 
 class TestFewerRequests:
@@ -875,7 +926,7 @@ class TestPatterns:
         p = feature_params(fake.features[0])
         assert p["instanceCount"]["expression"] == "#spokes"
         assert p["angle"]["expression"] == "90 deg"
-        assert out["name"] == "Circular pattern x#spokes over 90 deg"
+        assert out["name"] == "Circular pattern x(spokes) over 90 deg"
 
     async def test_the_axis_can_be_the_construction_line_of_a_sketch(self, make_server, fake):
         self.grow(fake)
@@ -990,7 +1041,7 @@ class TestPatterns:
             "3",
             True,
         )
-        assert out["name"] == "Linear pattern x4 @ #pitch, x3 @ 15 mm"
+        assert out["name"] == "Linear pattern x4 @ (pitch), x3 @ 15 mm"
 
     async def test_a_second_direction_needs_all_three_values(self, make_server, fake):
         result = await call(
@@ -1371,7 +1422,8 @@ class TestVariables:
         assert created["created"] is True and created["status"] == "OK"
         assert created["variable"] == "shank_d" and created["expression"] == "10 mm"
         feature = fake.features[0]
-        assert feature["featureType"] == "assignVariable" and feature["name"] == "#shank_d"
+        # named after the variable, not "#shank_d": Onshape shows "?" for a name starting with "#"
+        assert feature["featureType"] == "assignVariable" and feature["name"] == "shank_d"
         p = self.values(feature)
         assert p["name"]["value"] == "shank_d" and p["variableType"]["value"] == "LENGTH"
         assert p["lengthValue"]["expression"] == "10 mm" and p["mode"]["value"] == "ASSIGNED"

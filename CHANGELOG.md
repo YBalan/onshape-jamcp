@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Variables and variable-driven names showed `?` in Onshape's feature tree.** A variable feature
+  was named `#d` and an extrude with a variable depth `Extrude #head_h`, but in a feature name
+  Onshape reads `#word` as one of that feature's own parameters (its own default name for a variable
+  is `###name = #value`, where `##` is a literal `#`) and prints `?` when there is none. Variables are
+  now named after themselves (`d`) and generated names write a variable in brackets (`Extrude
+  (head_h)`, `Circular pattern x(spokes)`, `Linear pattern x(n) @ (pitch)`). An old `Extrude #head_h`
+  is repaired the next time its depth is changed with `update_feature`. Found by looking at the
+  feature tree on a fresh account; the server instructions now tell the assistant never to put
+  `#word` in a name it chooses.
+- **A gateway error (`502` / `503` / `504`) came back as a wall of HTML.** It is now a short message
+  with a hint that a write is not repeated automatically (it may have been saved: look before
+  repeating it).
+
 ## [1.1.0] - 2026-11-16
 
 ### Fixed

@@ -40,8 +40,9 @@ Onshape can accept a feature that does nothing, so read it. Put counts in a vari
 Defaults for every model, unless the user says otherwise: \
 (a) NAME things - give each part a descriptive name (extrude part_name / rename) and rename a \
 tab that still says "Part Studio N" or "Assembly N"; keep names the user chose. Extrudes are \
-named with their size by default ("Extrude 8 mm", "Cut 3 mm", "Extrude #head_h"); pass \
-hole=true for a drilled hole (named "Hole", no size). \
+named with their size by default ("Extrude 8 mm", "Cut 3 mm", "Extrude (head_h)"); pass \
+hole=true for a drilled hole (named "Hole", no size). Never put "#word" in a name you choose: \
+Onshape reads it as a parameter of that feature and shows "?" - write variables as (word). \
 (b) Put key dimensions (diameter, length, pitch, wall, ...) in VARIABLES with set_variable and \
 use "#name" for sizes in sketches (circle, rectangle width/height, hexagon), extrude depth, \
 fillets and thread pitch; use plain numbers only for incidental values. \

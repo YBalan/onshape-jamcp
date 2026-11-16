@@ -126,8 +126,8 @@ circular_pattern(count="#spokes", axis=<cylinder face id>, feature_ids=[<spoke e
   (all from `get_body_details`), or `sketch:<feature_id>` for the construction line drawn in that
   sketch (`create_sketch` with a `line` shape and `construction=true`). Linear patterns also take
   `x`, `y` or `z`; they run toward +X, +Y and +Z. `revolve` without `axis` uses the construction line of
-  its own sketch. (The construction-line lookup is new and **not yet checked live**; an explicit edge or
-  face ID is the proven route. See [development](development.md#verification-status-read-this-before-trusting-a-tool).)
+  its own sketch. A sketch with no construction line, or with two, is refused. (Checked live, like
+  the `x`/`y`/`z` directions; see [development](development.md#verification-status-read-this-before-trusting-a-tool).)
 - **Counts are variables.** `count="#spokes"` follows the variable (and a configuration that drives
   it, see [parametric modeling](parametric.md#configurations-m10-or-m18)). A count includes the original.
 - **The reply is the check.** Each call returns `effect` (parts and total volume before and after), the

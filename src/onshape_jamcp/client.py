@@ -108,6 +108,8 @@ def _error_message(response: httpx.Response) -> str:
         body = response.json()
     except (ValueError, json.JSONDecodeError):
         text = response.text.strip()
+        if text.startswith("<"):  # a gateway's HTML error page says nothing useful
+            return response.reason_phrase or f"HTTP {response.status_code}"
         return text[:500] or response.reason_phrase
     if isinstance(body, dict):
         for key in ("message", "error", "errorMessage", "error_description"):
@@ -116,11 +118,19 @@ def _error_message(response: httpx.Response) -> str:
     return str(body)[:500]
 
 
+_GATEWAY = (
+    "Onshape (or the gateway in front of it) had a temporary problem. A write is not repeated "
+    "automatically because it may have been saved: look at the result (list_features / "
+    "list_parts) before doing it again"
+)
 _HINTS = {
     403: "the API key lacks the required scope (read/write/delete) or you lack permission on "
     "this document",
     404: "check the document, workspace and element IDs",
     429: "Onshape API rate limit reached - wait a bit, or reduce the number of calls",
+    502: _GATEWAY,
+    503: _GATEWAY,
+    504: _GATEWAY,
 }
 
 

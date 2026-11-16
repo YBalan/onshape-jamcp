@@ -109,6 +109,19 @@ async def test_error_mapping(status, needle):
     await client.aclose()
 
 
+@pytest.mark.parametrize("status", [502, 503, 504])
+async def test_a_gateway_error_page_is_summarised_not_dumped(status):
+    page = "<html><head><title>x</title></head><body>" + "bad gateway " * 50 + "</body></html>"
+    client = make_client(lambda r: httpx.Response(status, text=page))
+    with pytest.raises(OnshapeError) as exc:
+        await client.post("/partstudios/d/1/w/2/e/3/features", {})
+    text = str(exc.value)
+    assert exc.value.status == status
+    assert "<html>" not in text and "bad gateway bad gateway" not in text
+    assert "before doing it again" in text  # a write is never retried blindly
+    await client.aclose()
+
+
 async def test_rate_limit_retries_then_succeeds(monkeypatch):
     calls = []
 
