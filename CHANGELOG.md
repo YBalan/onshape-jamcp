@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-16
+
 ### Fixed
 - **Variables and variable-driven names showed `?` in Onshape's feature tree.** A variable feature
   was named `#d` and an extrude with a variable depth `Extrude #head_h`, but in a feature name
