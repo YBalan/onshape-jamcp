@@ -257,7 +257,7 @@ Extrude all closed regions of a sketch into a solid, or cut with it (operation '
 | `operation` | 'new' \| 'add' \| 'remove' \| 'intersect' | no | 'new' creates a separate part; 'add' merges into existing parts; 'remove' cuts material away (holes, pockets); 'intersect' keeps only the overlap. Default: `new`. |
 | `symmetric` | boolean | no | Extrude half the depth to each side of the sketch plane. Default: `False`. |
 | `opposite_direction` | boolean | no | Flip to the other side of the sketch plane. Default: `False`. |
-| `name` | string | no | Feature name. Defaults to its size: 'Extrude 8 mm' ('Cut 8 mm' for operation 'remove', 'Hole' with hole=true); with a variable depth the name shows the variable, e.g. 'Extrude #head_h'. |
+| `name` | string | no | Feature name. Defaults to its size: 'Extrude 8 mm' ('Cut 8 mm' for operation 'remove', 'Hole' with hole=true); with a variable depth the name shows the variable, e.g. 'Extrude (head_h)'. Do not put '#word' in a name: Onshape reads it as a parameter of the feature and shows '?'. |
 | `hole` | boolean | no | The cut is a round drilled hole (use operation 'remove'): it is named 'Hole', without a size. Default: `False`. |
 | `only_parts` | array of string | no | Part IDs (from list_parts) that operations 'add', 'remove' and 'intersect' should affect. By default Onshape applies them to every part the extrusion touches, which matters when several parts share one Part Studio (e.g. a bolt and a nut). |
 | `part_name` | string | no | Name for the part an operation 'new' creates, e.g. 'M10x40 Hex Bolt'. Give one unless the user chose a name: otherwise the part stays 'Part N'. |

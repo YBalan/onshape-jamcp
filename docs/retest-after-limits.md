@@ -1,5 +1,16 @@
 # Re-test checklist for when Onshape's daily limits are gone
 
+> **Status (2026-11-16 night): done on a fresh account.** Sections 0, 1, 2 (except the reference
+> studios), 3 (without threads) and the unblocked items of section 4 were run in full against a
+> scratch document: 87 checks, all passed. The results are in
+> [development](development.md#verification-status-read-this-before-trusting-a-tool) ("Re-test on a
+> fresh account"). **Still open:** the threads on the M10 / M18 bolt and nut (a new account has no
+> ThreadCreator: add it to the account's custom features first), the tight bounding box on a swept
+> surface, the 5-minute spec cache, `boolean(operation="intersect", keep_tools=true)`, and the OAuth
+> cases (one-hour expiry, revoked grant, enterprise URL). The reference studios were read from the
+> old public document: `Circular Pattern + Configuration + Variable` holds only a number variable and an
+> empty sketch, which is why it has no parts. Run the rest of this page only when one of those matters.
+
 On 2026-11-16 a long live session used up two of Onshape's **per-endpoint daily limits** on the free
 plan, so some things could not be checked live that day (details in
 [parametric modeling](parametric.md#rate-limits)):

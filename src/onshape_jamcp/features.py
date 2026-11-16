@@ -415,15 +415,17 @@ VARIABLE_VALUE_PARAMETER = {"LENGTH": "lengthValue", "ANGLE": "angleValue", "NUM
 
 
 def variable_feature(name: str, kind: str, expression: str) -> dict[str, Any]:
-    """A Part Studio variable (``assignVariable``), shown in Onshape as ``#name``.
+    """A Part Studio variable (``assignVariable``), named after the variable.
 
     Checked live: the three parameters below are enough, and sketches / features can then use
-    ``#name`` in any expression.
+    ``#name`` in any expression. The feature NAME must not start with ``#``: Onshape reads
+    ``#word`` in a name as one of the feature's own parameters and shows ``?`` (the first
+    version named it ``#d`` and the tree showed ``?``).
     """
     kind_id = VARIABLE_KINDS[kind]
     body = wrap_feature(
         "assignVariable",
-        f"#{name}",
+        name,
         [
             enum_param("mode", "VariableMode", "ASSIGNED"),
             enum_param("variableType", "VariableType", kind_id),
