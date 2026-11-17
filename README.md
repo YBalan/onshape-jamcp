@@ -21,6 +21,8 @@ screenshots** (which costs tokens) or not.
 > one-hour expiry - see [what is verified](docs/development.md#verification-status-read-this-before-trusting-a-tool).
 > Re-run the smoke test on your own account (see [below](#verify-it-works-against-your-account)).
 
+[![onshape-jamcp demo video on YouTube](https://img.youtube.com/vi/WvFzWkIw5H4/maxresdefault.jpg)](https://youtu.be/WvFzWkIw5H4)
+
 ## Highlights
 
 | | |
