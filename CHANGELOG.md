@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-11-17
+
+### Changed
+- update Onshape API key URLs
+
 ## [1.1.3] - 2026-11-17
 
 ### Fixed
