@@ -16,7 +16,7 @@ This page takes you from nothing to a first part modeled by an AI assistant.
 
 ## 2. Create Onshape API keys
 
-1. Sign in and open <https://dev-portal.onshape.com/keys>.
+1. Sign in and open <https://cad.onshape.com/user/developer>.
 2. **Create new API key**.
 3. Tick the scopes you want the assistant to have:
    - *Application can read your documents* - required.

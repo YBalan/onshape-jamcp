@@ -224,7 +224,8 @@ class Settings:
             raise ConfigError(
                 "OAuth is selected but the application is not configured. Set "
                 "ONSHAPE_OAUTH_CLIENT_ID and ONSHAPE_OAUTH_CLIENT_SECRET (register an OAuth "
-                "application in your Onshape developer settings, https://dev-portal.onshape.com, "
+                "application in your Onshape developer settings, "
+                "https://cad.onshape.com/user/developer, "
                 f"with the redirect URL {self.oauth_redirect_uri}), then run "
                 "`onshape-jamcp auth login`."
             )
@@ -235,7 +236,7 @@ class Settings:
             raise ConfigError(
                 "Onshape API credentials are not configured. Set ONSHAPE_ACCESS_KEY and "
                 "ONSHAPE_SECRET_KEY in the MCP server's environment "
-                "(create keys at https://dev-portal.onshape.com/keys)."
+                "(create keys at https://cad.onshape.com/user/developer)."
             )
         return self.access_key, self.secret_key
 

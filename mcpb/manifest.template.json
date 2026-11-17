@@ -4,7 +4,7 @@
   "display_name": "Onshape CAD (jamcp)",
   "version": "{{version}}",
   "description": "Model, measure, look at and export parts in Onshape CAD from Claude: sketches, extrudes, patterns, revolves, variables, configurations, assemblies.",
-  "long_description": "Lets Claude work in your Onshape account: create documents, sketch and extrude, revolve, pattern and mirror, shell, fillet and chamfer, add threads, drive dimensions with variables and configurations, build assemblies with mates, measure, take screenshots and export STEP / STL. Lengths are in millimeters unless you choose inches.\n\n**Before you start**\n\n1. Create an API key at https://dev-portal.onshape.com/keys (tick Read and Write; Delete only if you want Claude to delete features). Onshape shows the secret once.\n2. Paste the access key and the secret key into the two fields when you install this extension. They are stored by Claude Desktop in your operating system's secure storage and are only sent to Onshape.\n3. This extension is started with `uv` (https://docs.astral.sh/uv/), which downloads Python and the `onshape-jamcp` package the first time it runs (a minute or so, then it is cached).\n\nOnshape's free plan creates only public documents; ask Claude for a scratch document and delete it afterwards. Source, documentation and troubleshooting: https://github.com/YBalan/onshape-jamcp",
+  "long_description": "Lets Claude work in your Onshape account: create documents, sketch and extrude, revolve, pattern and mirror, shell, fillet and chamfer, add threads, drive dimensions with variables and configurations, build assemblies with mates, measure, take screenshots and export STEP / STL. Lengths are in millimeters unless you choose inches.\n\n**Before you start**\n\n1. Create an API key at https://cad.onshape.com/user/developer (tick Read and Write; Delete only if you want Claude to delete features). Onshape shows the secret once.\n2. Paste the access key and the secret key into the two fields when you install this extension. They are stored by Claude Desktop in your operating system's secure storage and are only sent to Onshape.\n3. This extension is started with `uv` (https://docs.astral.sh/uv/), which downloads Python and the `onshape-jamcp` package the first time it runs (a minute or so, then it is cached).\n\nOnshape's free plan creates only public documents; ask Claude for a scratch document and delete it afterwards. Source, documentation and troubleshooting: https://github.com/YBalan/onshape-jamcp",
   "author": {
     "name": "YBalan",
     "url": "https://github.com/YBalan"
@@ -40,7 +40,7 @@
     "access_key": {
       "type": "string",
       "title": "Onshape API access key",
-      "description": "The access key of your Onshape API key (starts with on_). Create one at https://dev-portal.onshape.com/keys.",
+      "description": "The access key of your Onshape API key (starts with on_). Create one at https://cad.onshape.com/user/developer.",
       "sensitive": true,
       "required": true
     },

@@ -224,7 +224,7 @@ Environment variables JSON schema:
   "properties": {
     "ONSHAPE_ACCESS_KEY": {
       "type": "string",
-      "description": "Onshape API access key (https://dev-portal.onshape.com/keys)."
+      "description": "Onshape API access key (https://cad.onshape.com/user/developer)."
     },
     "ONSHAPE_SECRET_KEY": {
       "type": "string",

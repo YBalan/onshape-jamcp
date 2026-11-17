@@ -66,7 +66,7 @@ on that same machine (the redirect goes to `localhost`).
 
 ## Creating the OAuth application in Onshape
 
-Sign in at <https://dev-portal.onshape.com> and create a new OAuth application (Onshape describes
+Sign in at <https://cad.onshape.com/user/developer>, open the *OAuth applications* tab and create a new OAuth application (Onshape describes
 the concept on its [OAuth page](https://onshape-public.github.io/docs/auth/oauth); the portal's menu
 names may change, the form below is what it asked for on 2026-11-16).
 
