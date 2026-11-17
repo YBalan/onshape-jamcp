@@ -6,11 +6,15 @@ documents, model parts, measure them, look at them and export them - in **millim
 with a switch for **inches**, and a switch that decides whether the assistant gets to **see
 screenshots** (which costs tokens) or not.
 
-> **Status: alpha, verified live.** 140+ automated tests run against a simulated Onshape, and
-> [`scripts/smoke_test.py`](scripts/smoke_test.py) passed **31/31 checks against a real Onshape
-> account** (free plan, 2026-11-14): sketch → extrude → fillet → hole → edit → screenshot → STEP/STL
-> export, with orientation and dimensions measured. Chamfer, assemblies with mates and paid-plan
-> behavior are not yet verified live - see [what is verified](docs/development.md#verification-status-read-this-before-trusting-a-tool).
+> **Status: alpha, verified live.** 440+ automated tests run against a simulated Onshape, and the
+> tools were checked against real Onshape accounts (free plan) on geometry with a known answer.
+> [`scripts/smoke_test.py`](scripts/smoke_test.py) passed **31/31 checks** (2026-11-14): sketch →
+> extrude → fillet → hole → edit → screenshot → STEP/STL export, with orientation and dimensions
+> measured. On 2026-11-16 chamfer, assemblies with mates, ThreadCreator threads, part naming,
+> variables, configurations, patterns, mirror, revolve, shell, boolean and OAuth sign-in were checked
+> the same way, and 87 of those checks were re-run on a fresh account. **Not yet verified live:**
+> paid-plan and enterprise behavior, threads on a configurable bolt under M18, and OAuth over a real
+> one-hour expiry - see [what is verified](docs/development.md#verification-status-read-this-before-trusting-a-tool).
 > Re-run the smoke test on your own account (see [below](#verify-it-works-against-your-account)).
 
 ## Highlights
@@ -28,7 +32,15 @@ screenshots** (which costs tokens) or not.
 **1. Create API keys** at <https://dev-portal.onshape.com/keys> (tick *Read* and *Write*; *Delete*
 only if you want `delete_feature`). Copy the secret immediately - Onshape shows it once.
 
-**2. Add the server to your MCP client.** Claude Desktop (`claude_desktop_config.json`):
+**2. Add the server to your MCP client.**
+
+**Claude Desktop, one click:** install [`uv`](https://docs.astral.sh/uv/getting-started/installation/)
+once, download the installer
+**[onshape-jamcp.mcpb](https://github.com/YBalan/onshape-jamcp/releases/latest/download/onshape-jamcp.mcpb)**,
+open it, paste your two keys into the form and click *Install* - no config file to edit.
+[Details and troubleshooting](docs/claude-desktop.md).
+
+**Any client, by hand** - Claude Desktop (`claude_desktop_config.json`):
 
 ```json
 {
@@ -49,7 +61,7 @@ only if you want `delete_feature`). Copy the secret immediately - Onshape shows 
 
 Claude Code: `claude mcp add onshape -e ONSHAPE_ACCESS_KEY=... -e ONSHAPE_SECRET_KEY=... -- uvx onshape-jamcp`
 
-> Until the package is published to PyPI, run it from a checkout instead: replace the command with
+> To run it from a checkout instead (to work on the code), replace the command with
 > `"command": "uv", "args": ["run", "--directory", "/path/to/onshape-jamcp", "onshape-jamcp"]`.
 > More clients and details: [docs/getting-started.md](docs/getting-started.md).
 
@@ -58,6 +70,76 @@ Claude Code: `claude mcp add onshape -e ONSHAPE_ACCESS_KEY=... -e ONSHAPE_SECRET
 > *"Create a document called 'Bracket'. In a new Part Studio model a 60 × 40 mm plate, 8 mm thick,
 > with four 5 mm holes 6 mm from the corners and 4 mm fillets on the vertical edges. Show me a
 > screenshot when you're done."*
+
+## Examples
+
+Plain-language requests that work today. Every modeling reply says what changed (parts, volume), so
+the assistant - and you - can see a feature really did something. The numbers are what the tools
+measured on live Onshape; recipes with the exact calls are in [docs/how-to.md](docs/how-to.md).
+
+**A plate with holes and rounded corners, then a change of mind**
+
+> *"Create a document 'Bracket' with a 60 × 40 mm plate, 8 mm thick, four 5 mm holes 6 mm from the
+> corners and 4 mm fillets on the vertical edges. Then make the plate 12 mm thick."*
+
+The plate is sketched on the Top plane, extruded, filleted and drilled; the later change edits the
+extrude's depth and everything after it rebuilds. The part's bounding box confirms 12 mm.
+
+**A part of revolution**
+
+> *"Model a sleeve, outer diameter 40 mm, inner diameter 20 mm, 30 mm tall, by revolving a profile.
+> Call the part 'Sleeve'."*
+
+A rectangle plus a construction line as the axis, revolved 360°: 28 274 mm³ (π × (20² − 10²) × 30),
+named `Sleeve`.
+
+**A wheel with a configurable number of spokes**
+
+> *"Make a hub, Ø40 × 10 mm, with spokes 6 mm wide reaching 50 mm from the centre, repeated around
+> the hub. The number of spokes is a variable. Add a configuration with 3 and 6 spokes."*
+
+One spoke is patterned around the hub's axis with `circular_pattern`, the count comes from a variable
+that a configuration input drives: 17 979.92 mm³ with 3 spokes and 23 393.46 mm³ with 6.
+
+**A parametric bolt and nut, M10 or M18**
+
+> *"Model a hex bolt and nut with a Size configuration (M10 / M18) and a Length input. All sizes
+> from variables. Add the threads."*
+
+Head, shank, nut and hole follow the `Size` variables (an M18 nut is 15.8 mm high, the shank Ø18);
+threads use Onshape's Thread Creator feature script, which must be available on your account
+([threads](docs/threads.md)).
+
+**Repeat, mirror and hollow**
+
+> *"In a 100 × 100 mm, 5 mm plate cut a Ø6 hole 10 mm from the corner and repeat it 3 times, 20 mm
+> apart, in 2 rows 30 mm apart."* - *"Mirror this part across the Right plane."* - *"Shell this box
+> to 2 mm walls, open at the top."*
+
+A grid of six holes removes exactly 6 × 141.37 mm³; the mirror doubles the volume; a 40 × 30 × 20 mm
+box (24 000 mm³) shelled to 2 mm walls, open at the top, keeps 7 152 mm³.
+
+**Join parts in an assembly**
+
+> *"Put the bolt and the nut into an assembly and fasten them together."*
+
+Both are inserted and joined with a mate; the reply lists where each instance ended up, because an
+accepted mate is not proof that anything moved.
+
+**Measure, look, export**
+
+> *"How big is the 'Sleeve' part and what is its volume?"* - *"Show me a screenshot from the front."*
+> - *"Export it as STEP."*
+
+Bounding box, volume and surface area come from Onshape's own measurement (mass only if you assigned
+a material); the screenshot is sent to the assistant (or only saved, see
+`ONSHAPE_SCREENSHOT_REVIEW`); the STEP file lands in the output folder.
+
+**Look but do not touch**
+
+> *"List my documents and describe how 'Bracket' was built."* (with `ONSHAPE_READ_ONLY=true`)
+
+Every tool that can change a document is removed, so the assistant can only read.
 
 ## Verify it works against your account
 
@@ -105,6 +187,7 @@ Full parameter reference (generated from the code): [docs/tools.md](docs/tools.m
 ## Documentation
 
 - [Getting started](docs/getting-started.md) - keys, installing in each client, first prompt
+- [Claude Desktop installer](docs/claude-desktop.md) - one-click `.mcpb`, what the form asks, troubleshooting
 - [Configuration](docs/configuration.md) - every setting, units, precedence
 - [OAuth sign-in](docs/oauth.md) - sign in with your Onshape account instead of API keys
 - [How-to recipes](docs/how-to.md) - holes, fillets, edits, inches, export, read-only, advanced features

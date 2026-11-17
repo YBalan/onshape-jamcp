@@ -78,6 +78,17 @@ jobs:
           name: dist
           path: dist/
           if-no-files-found: error
+      # The Claude Desktop installer. It lives in its own folder and artifact: everything in dist/
+      # goes to PyPI, which would refuse a .mcpb file.
+      - name: Build the Claude Desktop bundle (.mcpb)
+        run: |
+          python -m pip install dist/*.whl
+          python scripts/build_mcpb.py --out bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle
+          path: bundle/
+          if-no-files-found: error
 
   publish-testpypi:
     name: Publish to TestPyPI
@@ -129,14 +140,20 @@ jobs:
         with:
           name: dist
           path: dist/
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle
+          path: bundle/
       - name: Create or update the release from CHANGELOG.md
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           python scripts/release.py notes "${TAG#v}" > notes.md
+          # onshape-jamcp.mcpb keeps one name, so .../releases/latest/download/onshape-jamcp.mcpb
+          # (the README's install link) always serves the newest bundle.
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
+            gh release upload "$TAG" dist/* bundle/* --clobber
           else
-            gh release create "$TAG" dist/* --title "$TAG" --notes-file notes.md
+            gh release create "$TAG" dist/* bundle/* --title "$TAG" --notes-file notes.md
           fi

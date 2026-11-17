@@ -40,7 +40,9 @@ variables** with your keys, and (optionally) settings from [configuration](confi
 
 ### Claude Desktop
 
-Edit `claude_desktop_config.json` (Settings → Developer → Edit Config):
+**One click:** download [onshape-jamcp.mcpb](https://github.com/YBalan/onshape-jamcp/releases/latest/download/onshape-jamcp.mcpb),
+open it and paste your keys into the form ([details](claude-desktop.md)). Or by hand, edit
+`claude_desktop_config.json` (Settings → Developer → Edit Config):
 
 ```json
 {

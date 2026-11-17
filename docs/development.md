@@ -32,7 +32,8 @@ src/onshape_jamcp/
   tools/          one module per theme; each has register(mcp, app, tool)
     common.py     typed parameter aliases + the @tool registrar
 tests/            unit + end-to-end tests (fake Onshape) + real stdio subprocess tests
-scripts/          smoke_test.py (live), gen_tools_doc.py
+scripts/          smoke_test.py (live), gen_tools_doc.py, release.py, build_mcpb.py
+mcpb/             Claude Desktop installer sources (manifest + pyproject templates, launcher, icon)
 ```
 
 ### Request flow
