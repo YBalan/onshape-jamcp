@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **One-click installer for Claude Desktop** (`onshape-jamcp.mcpb`): a 17 KB "MCP bundle" that asks for
+  the API keys (stored by Claude Desktop, never in a file) and the usual settings (units, screenshot
+  review, read-only, output folder, Onshape address) in a form. It is a `uv` bundle (manifest 0.4):
+  `uv` builds the environment from PyPI on first start, so nothing compiled is shipped and one file
+  serves Windows, macOS and Linux. Built by `scripts/build_mcpb.py` (reproducible, tool list generated
+  from the server), attached to every GitHub release by the release workflow under a fixed name so
+  `releases/latest/download/onshape-jamcp.mcpb` always works, and covered by `tests/test_mcpb.py`.
+  See [docs/claude-desktop.md](docs/claude-desktop.md).
+- **README examples** of what to ask for (plate and fillets, revolve, a wheel with a configurable spoke
+  count, a parametric M10 / M18 bolt and nut, patterns and shell, assembly, export, read-only) with the
+  volumes measured on live Onshape.
+- **The Glama Dockerfile form** is documented in [docs/publishing.md](docs/publishing.md#the-glama-dockerfile-form):
+  every field's value, the environment-variable schema and placeholder arguments, and a log-to-fix table.
+  The build steps and command were replayed in a clean copy of the repository.
+
+### Changed
+- The README no longer says the package is unpublished (it is on PyPI).
+
 ## [1.1.1] - 2026-11-16
 
 ### Fixed

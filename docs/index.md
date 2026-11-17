@@ -6,6 +6,7 @@ toggle for the LLM.
 | If you want to... | Read |
 |---|---|
 | Install it and make your first part | [Getting started](getting-started.md) |
+| Install it in Claude Desktop with one click | [Claude Desktop installer](claude-desktop.md) |
 | Switch to inches, turn screenshots off, set read-only | [Configuration](configuration.md) |
 | Sign in with OAuth instead of API keys | [OAuth sign-in](oauth.md) |
 | Do a specific task (holes, fillets, edits, export, ...) | [How-to recipes](how-to.md) |

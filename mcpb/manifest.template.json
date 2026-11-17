@@ -1,0 +1,98 @@
+{
+  "manifest_version": "0.4",
+  "name": "onshape-jamcp",
+  "display_name": "Onshape CAD (jamcp)",
+  "version": "{{version}}",
+  "description": "Model, measure, look at and export parts in Onshape CAD from Claude: sketches, extrudes, patterns, revolves, variables, configurations, assemblies.",
+  "long_description": "Lets Claude work in your Onshape account: create documents, sketch and extrude, revolve, pattern and mirror, shell, fillet and chamfer, add threads, drive dimensions with variables and configurations, build assemblies with mates, measure, take screenshots and export STEP / STL. Lengths are in millimeters unless you choose inches.\n\n**Before you start**\n\n1. Create an API key at https://dev-portal.onshape.com/keys (tick Read and Write; Delete only if you want Claude to delete features). Onshape shows the secret once.\n2. Paste the access key and the secret key into the two fields when you install this extension. They are stored by Claude Desktop in your operating system's secure storage and are only sent to Onshape.\n3. This extension is started with `uv` (https://docs.astral.sh/uv/), which downloads Python and the `onshape-jamcp` package the first time it runs (a minute or so, then it is cached).\n\nOnshape's free plan creates only public documents; ask Claude for a scratch document and delete it afterwards. Source, documentation and troubleshooting: https://github.com/YBalan/onshape-jamcp",
+  "author": {
+    "name": "YBalan",
+    "url": "https://github.com/YBalan"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YBalan/onshape-jamcp.git"
+  },
+  "homepage": "https://github.com/YBalan/onshape-jamcp",
+  "documentation": "https://github.com/YBalan/onshape-jamcp/tree/main/docs",
+  "support": "https://github.com/YBalan/onshape-jamcp/issues",
+  "icon": "icon.png",
+  "license": "MIT",
+  "keywords": ["onshape", "cad", "3d", "parametric", "mechanical", "mcp"],
+  "server": {
+    "type": "uv",
+    "entry_point": "src/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "src/server.py"],
+      "env": {
+        "ONSHAPE_ACCESS_KEY": "${user_config.access_key}",
+        "ONSHAPE_SECRET_KEY": "${user_config.secret_key}",
+        "ONSHAPE_BASE_URL": "${user_config.base_url}",
+        "ONSHAPE_UNITS": "${user_config.units}",
+        "ONSHAPE_SCREENSHOT_REVIEW": "${user_config.screenshot_review}",
+        "ONSHAPE_READ_ONLY": "${user_config.read_only}",
+        "ONSHAPE_OUTPUT_DIR": "${user_config.output_dir}"
+      }
+    }
+  },
+  "user_config": {
+    "access_key": {
+      "type": "string",
+      "title": "Onshape API access key",
+      "description": "The access key of your Onshape API key (starts with on_). Create one at https://dev-portal.onshape.com/keys.",
+      "sensitive": true,
+      "required": true
+    },
+    "secret_key": {
+      "type": "string",
+      "title": "Onshape API secret key",
+      "description": "The secret key shown once when the API key was created.",
+      "sensitive": true,
+      "required": true
+    },
+    "base_url": {
+      "type": "string",
+      "title": "Onshape address",
+      "description": "Leave as is. Only an enterprise account uses its own address, such as https://yourcompany.onshape.com (an API key only works on the address where it was created).",
+      "default": "https://cad.onshape.com",
+      "required": false
+    },
+    "units": {
+      "type": "string",
+      "title": "Units",
+      "description": "metric (millimeters) or imperial (inches). Angles are always degrees.",
+      "default": "metric",
+      "required": false
+    },
+    "screenshot_review": {
+      "type": "boolean",
+      "title": "Let Claude look at screenshots",
+      "description": "On: renders are sent to Claude so it can check its work (about 640 tokens per image). Off: they are only saved to disk.",
+      "default": true,
+      "required": false
+    },
+    "read_only": {
+      "type": "boolean",
+      "title": "Read-only mode",
+      "description": "On: every tool that can change a document is removed; Claude can only look.",
+      "default": false,
+      "required": false
+    },
+    "output_dir": {
+      "type": "directory",
+      "title": "Folder for screenshots and exports",
+      "description": "Screenshots and STEP / STL exports are written here.",
+      "default": "${DOCUMENTS}/onshape-jamcp",
+      "required": false
+    }
+  },
+  "tools": [],
+  "tools_generated": false,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  }
+}

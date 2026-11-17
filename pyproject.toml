@@ -45,7 +45,7 @@ dev = [
 packages = ["src/onshape_jamcp"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "docs", "scripts", "README.md", "LICENSE", "CHANGELOG.md", "glama.json", "Dockerfile"]
+include = ["src", "tests", "docs", "scripts", "mcpb", "README.md", "LICENSE", "CHANGELOG.md", "glama.json", "Dockerfile"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

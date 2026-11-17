@@ -143,7 +143,7 @@ What the tag triggers:
 | **verify** | `release.py check --tag vX.Y.Z` (tag = `pyproject` = `__init__` = newest `CHANGELOG` heading, dated, no TODO), ruff, the full test suite, docs-in-sync check |
 | **build** | `python -m build`, `twine check`, installs the built wheel in a clean venv and runs `onshape-jamcp --version` |
 | **publish-pypi** | uploads to PyPI via Trusted Publishing (waits for your approval if you set required reviewers) |
-| **github-release** | creates the GitHub Release with the `CHANGELOG.md` section as its notes and the wheel/sdist attached |
+| **github-release** | creates the GitHub Release with the `CHANGELOG.md` section as its notes and the wheel, the sdist and the Claude Desktop installer `onshape-jamcp.mcpb` attached (the README links to `releases/latest/download/onshape-jamcp.mcpb`; see [Claude Desktop](claude-desktop.md)) |
 
 Anything that fails in *verify* or *build* stops the release before anything is uploaded.
 
@@ -170,10 +170,10 @@ Anything that fails in *verify* or *build* stops the release before anything is 
    `glama.json` so it re-syncs. (A personal-account repo can alternatively be claimed by signing in
    with GitHub.)
 3. **Dockerfile / release.** Glama builds the server in a container to introspect it and to run its
-   checks. In the server's admin area configure the build from the repository's
-   [`Dockerfile`](../Dockerfile), run the build test and **Make Release** - a GitHub release alone
-   does not satisfy this. The server starts without API keys by design, so the build test works
-   without secrets. Do **not** put real keys into the Glama form.
+   checks. In the server's admin area (**Admin → Dockerfile**) fill the form as in
+   [the Glama form](#the-glama-dockerfile-form) below, run the build test and **Make Release** - a
+   GitHub release alone does not satisfy this. The server starts without API keys by design, so the
+   build test works without secrets. Do **not** put real keys into the Glama form.
 4. **Improve the score.** Glama grades license, tool-definition quality and maintenance. This repo
    is set up for it:
    - MIT `LICENSE` ✔
@@ -187,6 +187,103 @@ Anything that fails in *verify* or *build* stops the release before anything is 
 I could not exercise Glama's flows from this environment, so treat the Glama steps as the documented
 process (see Glama's own [glama.json post](https://glama.ai/blog/2025-07-08-what-is-glamajson)) and
 adjust if their UI has changed.
+
+### The Glama Dockerfile form
+
+The form (Admin → Dockerfile) generates a Dockerfile and shows it on the right once every field is
+valid. Glama does not document the fields; what follows was learned from two real build logs. The
+generated image is `debian:trixie-slim` with Node (the Node.js version field) and the `mcp-proxy`
+program installed globally, `uv` in `/usr/local/bin`, Python installed by `uv` (the Python version
+field, `uv python install 3.12 --default`), `WORKDIR /app`, this repository cloned into `/app` at the
+commit Glama indexed, **each Build step run as one shell command** and **CMD arguments used as the
+container's argument list**. Both array fields are JSON.
+
+| Field | Value | Why |
+|---|---|---|
+| Base image | `debian:trixie-slim` (the default) | Plain Debian; `uv` and Python are added on top. |
+| Node.js version | leave the default | This server does not use Node; Glama's proxy does. |
+| Python version | `3.12` | The package needs 3.10+; CI runs 3.10, 3.12 and 3.13. |
+| Build steps | `["uv sync --frozen --no-dev"]` | Installs the checkout and the locked dependencies (`uv.lock` is in the repository) into `/app/.venv`. **One entry per command, the whole command line in one string.** |
+| CMD arguments | `["mcp-proxy", "--", "uv", "run", "--no-sync", "onshape-jamcp"]` | `mcp-proxy` wraps the stdio server for Glama; after `--` comes the server's own command. **One entry per argument.** `uv run --no-sync` starts the program from the environment the build step made, without touching the network. |
+| Environment variables JSON schema | the JSON below | Tells Glama (and its page) which settings exist. |
+| Placeholder parameters | the JSON below | Dummy values for the build test, so the schema check passes. |
+
+The two array fields are written differently, and both mistakes were made on the first tries:
+
+- Build steps `["uv", "sync", "--frozen", "--no-dev"]` (words as separate entries) becomes
+  `RUN (uv) && (sync) && (--frozen) && (--no-dev)`: `uv` runs with no command, prints its help and
+  the build ends with `exit code: 2`.
+- CMD arguments `["mcp-proxy", "--", "uv run --no-sync onshape-jamcp"]` (the command as one entry) makes
+  the proxy look for a program with that whole name: `spawn uv run --no-sync onshape-jamcp ENOENT`.
+
+Environment variables JSON schema:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "ONSHAPE_ACCESS_KEY": {
+      "type": "string",
+      "description": "Onshape API access key (https://dev-portal.onshape.com/keys)."
+    },
+    "ONSHAPE_SECRET_KEY": {
+      "type": "string",
+      "description": "Onshape API secret key, shown once when the key is created."
+    },
+    "ONSHAPE_UNITS": {
+      "type": "string",
+      "enum": ["metric", "imperial"],
+      "default": "metric",
+      "description": "metric = millimeters, imperial = inches."
+    },
+    "ONSHAPE_SCREENSHOT_REVIEW": {
+      "type": "string",
+      "enum": ["true", "false"],
+      "default": "true",
+      "description": "true: screenshots are sent to the model; false: only saved to disk."
+    },
+    "ONSHAPE_READ_ONLY": {
+      "type": "string",
+      "enum": ["true", "false"],
+      "default": "false",
+      "description": "true removes every tool that can modify a document."
+    }
+  },
+  "required": ["ONSHAPE_ACCESS_KEY", "ONSHAPE_SECRET_KEY"]
+}
+```
+
+Placeholder parameters (obviously fake; the server starts and lists its tools without contacting
+Onshape):
+
+```json
+{
+  "ONSHAPE_ACCESS_KEY": "placeholder-access-key",
+  "ONSHAPE_SECRET_KEY": "placeholder-secret-key"
+}
+```
+
+The warning *"Placeholder arguments do not match environment variables JSON schema"* means these two
+disagree: every name in the placeholders must exist in the schema's `properties` with the right type
+(all strings here, so booleans are the strings `"true"` / `"false"`), and every name in `required`
+must have a placeholder.
+
+If the first build test fails, the log says why:
+
+| Log says | Fix |
+|---|---|
+| `RUN (uv) && (sync) && (--frozen) && (--no-dev)` then uv's help text and `exit code: 2` | The build step was entered as separate words. Use one entry with the whole command: `["uv sync --frozen --no-dev"]`. |
+| `could not start the proxy Error: spawn uv run --no-sync onshape-jamcp ENOENT` (`spawnargs: []`) | The server command was entered as one entry. Use one entry per argument (`"uv"`, `"run"`, `"--no-sync"`, `"onshape-jamcp"`) as in the table. |
+| `Failed to spawn: onshape-jamcp` when the test starts | The build step did not create `/app/.venv` with the package: check the `uv sync` step succeeded and ran in `/app` (the default). |
+| `No interpreter found` / a Python version error in the build step | The Python version field did not install a 3.10+ interpreter: set it to `3.12`. |
+| The build works but the test finds no tools | The command after `--` must be the server itself, with no `--help` or other flags. |
+
+Without `uv`'s project mode the same can be done with a plain virtual environment: Build steps
+`["python -m venv .venv", ".venv/bin/pip install ."]` and CMD arguments
+`["mcp-proxy", "--", ".venv/bin/onshape-jamcp"]`.
+
+Then **Deploy**, wait for the test to pass, **Make Release** with the version from the
+[changelog](../CHANGELOG.md) and a line of notes.
 
 ## 4. Optional: official MCP Registry
 

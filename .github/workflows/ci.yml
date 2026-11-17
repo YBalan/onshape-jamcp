@@ -40,3 +40,7 @@ jobs:
       - run: python -m build
       - name: Docker image builds
         run: docker build -t onshape-jamcp .
+      - name: Claude Desktop bundle (.mcpb) builds
+        run: |
+          python -m pip install .
+          python scripts/build_mcpb.py --out bundle

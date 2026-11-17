@@ -1,0 +1,9 @@
+# The Claude Desktop bundle's own project: it only says "install onshape-jamcp of exactly this
+# version from PyPI". `uv` builds an environment from it the first time the extension starts.
+# scripts/build_mcpb.py fills in {{version}}.
+[project]
+name = "onshape-jamcp-bundle"
+version = "{{version}}"
+description = "Claude Desktop bundle for onshape-jamcp"
+requires-python = ">=3.10"
+dependencies = ["onshape-jamcp=={{version}}"]
