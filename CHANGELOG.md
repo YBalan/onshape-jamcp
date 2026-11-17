@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-11-17
+
 ### Fixed
 - **`list_documents` accepted `limit` up to 100, but Onshape allows 20** and answered `400 must be less
   than or equal to 20`. The schema now stops at 20 (the default), so the assistant is refused before
