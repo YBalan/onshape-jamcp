@@ -18,7 +18,7 @@ _No parameters._
 
 ### `whoami` 🔍
 
-Verify that the configured credentials (API keys or OAuth sign-in) work by asking Onshape which account they belong to. Use it to diagnose authentication problems before doing real work.
+Check that the configured credentials (API keys or OAuth sign-in) really work, by asking Onshape which account they belong to: returns connected, user_id, name and the base_url in use. Use it first in a session or whenever another tool answers 401, and to tell a wrong key from a wrong document ID. Read-only, one request, nothing is changed. Onshape answers 200 with an empty body to credentials it does not recognise, so this call treats that "anonymous" reply as a failure and explains how to fix the keys. It does not show which permissions (read / write / delete) the key has - a 403 from a modeling tool means the key lacks the write scope. For this server's own settings use `get_settings`.
 
 _No parameters._
 
@@ -28,7 +28,7 @@ Find, create and organise documents and their tabs.
 
 ### `list_documents` 🔍
 
-List or search Onshape documents. Returns each document's ID (needed by every other tool), name and last-modified time. Use `offset` with `next_offset` to page.
+Find Onshape documents: returns each one's document_id (every other tool needs it), name, modified_at and owner, newest first unless `sort_by` says otherwise. Start here when the user names a document: search with `query`, narrow with `scope` (your own, created by you, shared with you, recent, or public). To open one document and see its tabs use `get_document`; to make a new one `create_document`. Read-only. A full page includes a `next_offset`: pass it as `offset` for the next page.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -49,7 +49,7 @@ Describe one document: its main workspace ID and every element (tab) in it - Par
 
 ### `create_document` ✏️
 
-Create a new Onshape document in the user's account (private by default). Follow with `create_element` to add a Part Studio (new documents may start empty).
+Create a new, empty-looking Onshape document in the user's account and return its document_id, workspace_id, name, url and the tabs it already has (Onshape usually adds a 'Part Studio 1' and an 'Assembly 1': reuse and `rename` them before adding more with `create_element`). Private by default. Onshape's FREE plan only allows PUBLIC documents: the call then fails with nothing created and a message to ask the user, because a public document is visible to everyone; retry with public=true only after they agree. Use it only when the user wants a new document; to work in an existing one find it with `list_documents`. There is no tool to delete a document, so tell the user a scratch document stays in their account until they delete it in Onshape.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -59,7 +59,7 @@ Create a new Onshape document in the user's account (private by default). Follow
 
 ### `create_element` ✏️
 
-Add a new Part Studio (where parts are modeled) or Assembly tab to a document and return its element ID.
+Add a new tab to a document and return its element_id, name and kind: a Part Studio (where sketches, extrudes and the other features build parts) or an Assembly (where parts are inserted and mated). Use it when the document has no suitable tab - a new document already has a Part Studio and an Assembly, so check `get_document` first and reuse them instead of piling up empty tabs. Give it a descriptive name (a tab still called 'Part Studio 1' is flagged has_default_name). The new tab is empty: model in it with `create_sketch` / `extrude`, or fill an Assembly with `insert_instance`. It does not create parts, sketches or documents (`create_document` makes those).
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -74,7 +74,7 @@ Read-only views of a model: features, parts, measurements, faces/edges, assembli
 
 ### `list_features` 🔍
 
-List the feature tree of a Part Studio in order: feature ID, name, type (newSketch, extrude, fillet, ...) and health status (OK / WARNING / ERROR). Check this after creating features - an ERROR status means the feature failed to build.
+List the feature tree of a Part Studio in order: `features` with feature_id, name, feature_type (newSketch, extrude, fillet, ...), suppressed and health status (OK / WARNING / ERROR), plus the rollback_index. Use it to find the feature_id that `update_feature` or `delete_feature` needs, to see why a part looks wrong (an ERROR feature built no geometry), or - with `feature_id` - to read one feature's full raw JSON as a template for `add_feature` or to learn its parameter IDs. The modeling tools already return the health of the feature they add, so do not call this after every step: Onshape limits this endpoint per day (a free plan can hit a 429 with a many-hour wait after heavy polling). Read-only. For the parts it produces use `list_parts`; for variables `list_variables`.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -85,7 +85,7 @@ List the feature tree of a Part Studio in order: feature ID, name, type (newSket
 
 ### `list_parts` 🔍
 
-List the parts (solid/surface bodies) in a Part Studio with their part IDs, which other tools accept to focus on one part. A part flagged has_default_name is still called "Part N": give it a descriptive name with `rename`.
+List the parts (solid and surface bodies) a Part Studio currently produces: part_id, name, body_type and hidden, one request, read-only. Use it to get the part IDs that other tools take - `get_part_properties` and `get_body_details` (to look at one part), `rename`, `only_parts` / `merge_with` / `part_ids` of extrude and the pattern tools, `boolean`, `insert_instance`. Call it again after anything that merges or splits parts (a boolean, an extrude that adds): IDs can change. A part flagged has_default_name is still called "Part N": give it a descriptive name with `rename`. For the feature tree use `list_features`; for the tabs of a document `get_document`.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -121,12 +121,12 @@ List the faces (and optionally edges) of each part with their IDs, geometry type
 
 ### `get_assembly` 🔍
 
-Describe an Assembly: its instances (parts/sub-assemblies), where each is placed (translation in the configured length unit) and its mates.
+Read an Assembly tab: what it contains, where everything sits and what is mated. Call it before changing an assembly (to get the instance IDs `add_mate` needs after `insert_instance`) and after `add_mate` to confirm a part really moved - an accepted mate is not proof. Read-only, one request, nothing is changed. It returns `instances` (instance_id, name, type Part or Assembly, part_id and element_id of the source, suppressed), `placements` (the instance `path`, `fixed`, and `position`: the translation of its origin in the configured length unit - rotation is not reported) and `mates` (feature_id, name, type, suppressed). An empty assembly gives empty lists. For the parts of a Part Studio use `list_parts`; for the tabs of a document use `get_document`; for volume or size use `get_part_properties` on the Part Studio.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `document_id` | string | yes | Onshape document ID: the 24-character hex string after /documents/ in the document URL. Get it from list_documents. |
-| `element_id` | string | yes | Element (tab) ID: the string after /e/ in the Onshape URL. Get it from get_document. |
+| `element_id` | string | yes | Element ID of the ASSEMBLY tab (from get_document, type ASSEMBLY). For a Part Studio use list_parts instead. |
 | `workspace_id` | string | no | Workspace ID (the string after /w/ in the URL). Optional - defaults to the document's main workspace. |
 
 ### `list_custom_features` 🔍
@@ -350,7 +350,7 @@ Mirror parts, features or faces across a plane. Mirroring a part gives a second 
 
 ### `shell` ✏️
 
-Hollow out a part with walls of the given thickness: remove faces to get an open shell (a box, a cup, an enclosure) or hollow it completely. The reply says what changed; the volume must drop.
+Hollow out a part with walls of the given thickness. Give `remove_face_ids` to leave those faces open (a box without a lid, a cup, an enclosure) or `hollow_part_ids` to hollow a part completely and leave a closed void inside - exactly one of the two. The walls grow inward by default; `opposite_direction` grows them outward from the original surface. Example: a 40 x 30 x 20 mm box (24 000 mm3) shelled to 2 mm walls with the top face removed keeps 7 152 mm3. Use it instead of cutting an inner pocket by hand with `extrude` (operation 'remove'); use `boolean` to combine or subtract whole parts. The face IDs come from `get_body_details`. It appends one `shell` feature and returns its health plus `effect` (parts and total volume before and after) and a warning when nothing changed: Onshape can accept a feature that does nothing, so read it. A thickness too large for the part may give ERROR. Remove it with `delete_feature`.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -382,28 +382,28 @@ Combine whole parts: join them (union), cut one with another (subtract: a bolt h
 
 ### `fillet` ✏️
 
-Round the given edges with a constant-radius fillet.
+Round edges with a constant-radius fillet: a smooth, curved blend between the two faces that meet at each edge. Use it to soften corners and sharp edges; use `chamfer` instead for a flat, angled bevel. The part must already exist (extrude first) and the edge IDs come from `get_body_details`. It appends one `fillet` feature at the end of the feature tree and returns its feature_id, name and health (OK / WARNING / ERROR - a radius too large for the geometry gives ERROR with a warning, but the feature still exists). It does not measure the result: confirm with `get_part_properties` (the volume changes slightly) or a screenshot. Change the radius later with `update_feature` (parameter `radius`), remove it with `delete_feature`.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `document_id` | string | yes | Onshape document ID: the 24-character hex string after /documents/ in the document URL. Get it from list_documents. |
 | `element_id` | string | yes | Element (tab) ID: the string after /e/ in the Onshape URL. Get it from get_document. |
-| `edge_ids` | array of string | yes | Edge IDs from get_body_details to round. |
-| `radius` | number \| string | yes | Length: a number in the configured unit (see get_settings; mm by default), a string with a unit such as '2.5 in', or an Onshape expression such as '#width'. |
-| `name` | string | no | Default: `Fillet`. |
+| `edge_ids` | array of string | yes | Edge IDs to round, from get_body_details (include_edges is on by default). IDs can change when the part is rebuilt, so read them again after other edits. |
+| `radius` | number \| string | yes | Fillet radius: a number in the configured unit (mm by default), a string with a unit ('1.5 in') or an expression ('#r'). It must fit the adjacent faces, or Onshape reports ERROR. |
+| `name` | string | no | Feature name shown in the tree. Default: `Fillet`. |
 | `workspace_id` | string | no | Workspace ID (the string after /w/ in the URL). Optional - defaults to the document's main workspace. |
 
 ### `chamfer` ✏️
 
-Bevel the given edges with an equal-distance chamfer.
+Bevel edges with an equal-distance chamfer: a flat, angled cut that takes the same distance off both faces at each edge (a 45 degree bevel on a right-angle edge). Use it for lead-in bevels, bolt and shaft tips and to break sharp edges; use `fillet` instead for a rounded blend. The part must already exist (extrude first) and the edge IDs come from `get_body_details`. It appends one `chamfer` feature at the end of the feature tree and returns its feature_id, name and health (OK / WARNING / ERROR - a distance too large for the geometry gives ERROR with a warning, but the feature still exists). It does not measure the result: confirm with `get_part_properties` (the volume drops) or a screenshot. Change the size later with `update_feature` (parameter `width`), remove it with `delete_feature`. Only equal distances are supported; for a two-distance or distance-and-angle chamfer use `add_feature` with raw JSON.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `document_id` | string | yes | Onshape document ID: the 24-character hex string after /documents/ in the document URL. Get it from list_documents. |
 | `element_id` | string | yes | Element (tab) ID: the string after /e/ in the Onshape URL. Get it from get_document. |
-| `edge_ids` | array of string | yes | Edge IDs from get_body_details to bevel. |
-| `distance` | number \| string | yes | Length: a number in the configured unit (see get_settings; mm by default), a string with a unit such as '2.5 in', or an Onshape expression such as '#width'. |
-| `name` | string | no | Default: `Chamfer`. |
+| `edge_ids` | array of string | yes | Edge IDs to bevel, from get_body_details (include_edges is on by default). IDs can change when the part is rebuilt, so read them again after other edits. |
+| `distance` | number \| string | yes | How far the bevel reaches from the edge along BOTH faces: a number in the configured unit (mm by default), a string with a unit ('0.5 in') or an expression ('#c'). It must fit the adjacent faces, or Onshape reports ERROR. |
+| `name` | string | no | Feature name shown in the tree. Default: `Chamfer`. |
 | `workspace_id` | string | no | Workspace ID (the string after /w/ in the URL). Optional - defaults to the document's main workspace. |
 
 ### `update_feature` ✏️
@@ -422,7 +422,7 @@ Change parameters of existing features (for example make an extrude deeper or a 
 
 ### `delete_feature` ✏️ ⚠️
 
-Permanently remove a feature from the Part Studio. Features that depend on it (for example an extrude that uses a deleted sketch) will fail. Onshape's version history can restore it.
+Permanently remove one feature from a Part Studio (an extrude, a fillet, a variable, a pattern, ...). Use it to undo a feature that went wrong (status ERROR, or a warning that nothing changed) or that is no longer wanted; to change a feature instead, use `update_feature`. Features that depend on the deleted one fail afterwards (deleting a sketch breaks the extrude that uses it), so delete from the end of the tree backwards, or delete the dependents too, and check `list_features` for ERROR statuses. The call returns only the deleted feature_id. There is no trash: only Onshape's version history can bring the feature back.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

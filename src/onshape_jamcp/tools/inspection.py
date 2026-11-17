@@ -87,9 +87,15 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             ),
         ] = None,
     ) -> dict[str, Any]:
-        """List the feature tree of a Part Studio in order: feature ID, name, type (newSketch,
-        extrude, fillet, ...) and health status (OK / WARNING / ERROR). Check this after creating
-        features - an ERROR status means the feature failed to build."""
+        """List the feature tree of a Part Studio in order: `features` with feature_id, name,
+        feature_type (newSketch, extrude, fillet, ...), suppressed and health status (OK / WARNING
+        / ERROR), plus the rollback_index. Use it to find the feature_id that `update_feature` or
+        `delete_feature` needs, to see why a part looks wrong (an ERROR feature built no
+        geometry), or - with `feature_id` - to read one feature's full raw JSON as a template for
+        `add_feature` or to learn its parameter IDs. The modeling tools already return the health
+        of the feature they add, so do not call this after every step: Onshape limits this
+        endpoint per day (a free plan can hit a 429 with a many-hour wait after heavy polling).
+        Read-only. For the parts it produces use `list_parts`; for variables `list_variables`."""
         wid = await app.workspace(document_id, workspace_id)
         data = await app.client.get(
             f"/partstudios/d/{q(document_id)}/w/{q(wid)}/e/{q(element_id)}/features"
@@ -119,9 +125,14 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
     async def list_parts(
         document_id: DocumentId, element_id: ElementId, workspace_id: WorkspaceId = None
     ) -> dict[str, Any]:
-        """List the parts (solid/surface bodies) in a Part Studio with their part IDs, which
-        other tools accept to focus on one part. A part flagged has_default_name is still called
-        "Part N": give it a descriptive name with `rename`."""
+        """List the parts (solid and surface bodies) a Part Studio currently produces: part_id,
+        name, body_type and hidden, one request, read-only. Use it to get the part IDs that other
+        tools take - `get_part_properties` and `get_body_details` (to look at one part), `rename`,
+        `only_parts` / `merge_with` / `part_ids` of extrude and the pattern tools, `boolean`,
+        `insert_instance`. Call it again after anything that merges or splits parts (a boolean, an
+        extrude that adds): IDs can change. A part flagged has_default_name is still called
+        "Part N": give it a descriptive name with `rename`. For the feature tree use
+        `list_features`; for the tabs of a document `get_document`."""
         wid = await app.workspace(document_id, workspace_id)
         entries = []
         for p in await app.parts(document_id, wid, element_id):
@@ -280,10 +291,27 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
 
     @tool(title="Get assembly", read_only=True)
     async def get_assembly(
-        document_id: DocumentId, element_id: ElementId, workspace_id: WorkspaceId = None
+        document_id: DocumentId,
+        element_id: Annotated[
+            str,
+            Field(
+                min_length=1,
+                description="Element ID of the ASSEMBLY tab (from get_document, type ASSEMBLY). "
+                "For a Part Studio use list_parts instead.",
+            ),
+        ],
+        workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
-        """Describe an Assembly: its instances (parts/sub-assemblies), where each is placed
-        (translation in the configured length unit) and its mates."""
+        """Read an Assembly tab: what it contains, where everything sits and what is mated. Call it
+        before changing an assembly (to get the instance IDs `add_mate` needs after
+        `insert_instance`) and after `add_mate` to confirm a part really moved - an accepted mate
+        is not proof. Read-only, one request, nothing is changed. It returns `instances`
+        (instance_id, name, type Part or Assembly, part_id and element_id of the source,
+        suppressed), `placements` (the instance `path`, `fixed`, and `position`: the translation of
+        its origin in the configured length unit - rotation is not reported) and `mates`
+        (feature_id, name, type, suppressed). An empty assembly gives empty lists. For the parts of
+        a Part Studio use `list_parts`; for the tabs of a document use `get_document`; for volume
+        or size use `get_part_properties` on the Part Studio."""
         wid = await app.workspace(document_id, workspace_id)
         units = app.units
         data = await app.client.get(
