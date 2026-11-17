@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-17
+
 ### Added
 - **One-click installer for Claude Desktop** (`onshape-jamcp.mcpb`): a 17 KB "MCP bundle" that asks for
   the API keys (stored by Claude Desktop, never in a file) and the usual settings (units, screenshot
