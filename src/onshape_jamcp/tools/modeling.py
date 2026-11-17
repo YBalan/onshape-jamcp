@@ -205,13 +205,36 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         element_id: ElementId,
         edge_ids: Annotated[
             list[str],
-            Field(min_length=1, description="Edge IDs from get_body_details to round."),
+            Field(
+                min_length=1,
+                description="Edge IDs to round, from get_body_details (include_edges is on by "
+                "default). IDs can change when the part is rebuilt, so read them again after "
+                "other edits.",
+            ),
         ],
-        radius: Length,
-        name: Annotated[str, Field(min_length=1, max_length=100)] = "Fillet",
+        radius: Annotated[
+            float | str,
+            Field(
+                description="Fillet radius: a number in the configured unit (mm by default), a "
+                "string with a unit ('1.5 in') or an expression ('#r'). It must fit the "
+                "adjacent faces, or Onshape reports ERROR."
+            ),
+        ],
+        name: Annotated[
+            str,
+            Field(min_length=1, max_length=100, description="Feature name shown in the tree."),
+        ] = "Fillet",
         workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
-        """Round the given edges with a constant-radius fillet."""
+        """Round edges with a constant-radius fillet: a smooth, curved blend between the two faces
+        that meet at each edge. Use it to soften corners and sharp edges; use `chamfer` instead for
+        a flat, angled bevel. The part must already exist (extrude first) and the edge IDs come
+        from `get_body_details`. It appends one `fillet` feature at the end of the feature tree and
+        returns its feature_id, name and health (OK / WARNING / ERROR - a radius too large for the
+        geometry gives ERROR with a warning, but the feature still exists). It does not measure the
+        result: confirm with `get_part_properties` (the volume changes slightly) or a screenshot.
+        Change the radius later with `update_feature` (parameter `radius`), remove it with
+        `delete_feature`."""
         body = features.fillet_feature(name=name, edge_ids=edge_ids, radius=radius, units=app.units)
         return await add(document_id, element_id, workspace_id, body)
 
@@ -221,13 +244,38 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         element_id: ElementId,
         edge_ids: Annotated[
             list[str],
-            Field(min_length=1, description="Edge IDs from get_body_details to bevel."),
+            Field(
+                min_length=1,
+                description="Edge IDs to bevel, from get_body_details (include_edges is on by "
+                "default). IDs can change when the part is rebuilt, so read them again after "
+                "other edits.",
+            ),
         ],
-        distance: Length,
-        name: Annotated[str, Field(min_length=1, max_length=100)] = "Chamfer",
+        distance: Annotated[
+            float | str,
+            Field(
+                description="How far the bevel reaches from the edge along BOTH faces: a number in "
+                "the configured unit (mm by default), a string with a unit ('0.5 in') or an "
+                "expression ('#c'). It must fit the adjacent faces, or Onshape reports ERROR."
+            ),
+        ],
+        name: Annotated[
+            str,
+            Field(min_length=1, max_length=100, description="Feature name shown in the tree."),
+        ] = "Chamfer",
         workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
-        """Bevel the given edges with an equal-distance chamfer."""
+        """Bevel edges with an equal-distance chamfer: a flat, angled cut that takes the same
+        distance off both faces at each edge (a 45 degree bevel on a right-angle edge). Use it for
+        lead-in bevels, bolt and shaft tips and to break sharp edges; use `fillet` instead for a
+        rounded blend. The part must already exist (extrude first) and the edge IDs come from
+        `get_body_details`. It appends one `chamfer` feature at the end of the feature tree and
+        returns its feature_id, name and health (OK / WARNING / ERROR - a distance too large for
+        the geometry gives ERROR with a warning, but the feature still exists). It does not measure
+        the result: confirm with `get_part_properties` (the volume drops) or a screenshot. Change
+        the size later with `update_feature` (parameter `width`), remove it with `delete_feature`.
+        Only equal distances are supported; for a two-distance or distance-and-angle chamfer use
+        `add_feature` with raw JSON."""
         body = features.chamfer_feature(
             name=name, edge_ids=edge_ids, distance=distance, units=app.units
         )
@@ -363,9 +411,14 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         feature_id: FeatureId,
         workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
-        """Permanently remove a feature from the Part Studio. Features that depend on it (for
-        example an extrude that uses a deleted sketch) will fail. Onshape's version history can
-        restore it."""
+        """Permanently remove one feature from a Part Studio (an extrude, a fillet, a variable, a
+        pattern, ...). Use it to undo a feature that went wrong (status ERROR, or a warning that
+        nothing changed) or that is no longer wanted; to change a feature instead, use
+        `update_feature`. Features that depend on the deleted one fail afterwards (deleting a
+        sketch breaks the extrude that uses it), so delete from the end of the tree backwards, or
+        delete the dependents too, and check `list_features` for ERROR statuses. The call returns
+        only the deleted feature_id. There is no trash: only Onshape's version history can bring
+        the feature back."""
         wid = await app.workspace(document_id, workspace_id)
         await app.client.delete(
             f"{_features_path(document_id, wid, element_id)}/featureid/{q(feature_id)}"

@@ -6,6 +6,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-11-17
+
+### Changed
+- update Onshape API key URLs
+
+## [1.1.3] - 2026-11-17
+
+### Fixed
+- **`list_documents` accepted `limit` up to 100, but Onshape allows 20** and answered `400 must be less
+  than or equal to 20`. The schema now stops at 20 (the default), so the assistant is refused before
+  the request and sees the real limit.
+- **`get_assembly` returned `null` for `type`, `part_id` and `element_id`** of an instance made from a
+  whole Part Studio, for which Onshape reports only an id and a name. Absent fields are now left out.
+  (A single inserted part still reports all three.)
+- **`shell`'s description promised an `ERROR` for a wall that is too thick.** Checked live: Onshape
+  accepts it as `OK` and changes nothing; the reply's `effect` and warning are what reveal it, and the
+  description now says so.
+
+### Changed
+- **Tool descriptions say when to use a tool and what it does**, after Glama's tool-definition review
+  rated the one-line ones lowest (`chamfer` C, `fillet` B, `get_assembly` B). `fillet` and `chamfer`
+  now contrast each other, name their prerequisite (edge IDs from `get_body_details`), the result
+  (a feature appended, health status, no measurement) and how to change or undo it (`update_feature`
+  with `radius` / `width`, `delete_feature`); every parameter has a description. `get_assembly` says
+  what each part of its reply holds (including that only the translation is reported) and when to
+  call it relative to `insert_instance` / `add_mate`. The next shortest were rewritten the same way:
+  `delete_feature`, `list_parts`, `list_features` (with its daily-limit warning), `list_documents`,
+  `create_document`, `create_element`, `whoami` and `shell`.
+
 ## [1.1.2] - 2026-11-17
 
 ### Added

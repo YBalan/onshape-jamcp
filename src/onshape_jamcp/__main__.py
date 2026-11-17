@@ -15,7 +15,7 @@ from .server import build_server
 
 EPILOG = """\
 Settings are read from environment variables (flags override them):
-  ONSHAPE_ACCESS_KEY / ONSHAPE_SECRET_KEY   API keys from https://dev-portal.onshape.com/keys
+  ONSHAPE_ACCESS_KEY / ONSHAPE_SECRET_KEY   API keys from https://cad.onshape.com/user/developer
   ONSHAPE_OAUTH_CLIENT_ID / _SECRET   your own Onshape OAuth application, instead of API keys;
                                  then run: onshape-jamcp auth login   (see docs/oauth.md)
   ONSHAPE_UNITS                  metric (default, mm) | imperial (inches)

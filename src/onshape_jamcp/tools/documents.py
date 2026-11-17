@@ -37,11 +37,17 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             Field(description="Which documents to list."),
         ] = "mine",
         sort_by: Annotated[Literal["modified", "created", "name"], Field()] = "modified",
-        limit: Annotated[int, Field(ge=1, le=100, description="Page size.")] = 20,
+        limit: Annotated[
+            int, Field(ge=1, le=20, description="Page size (Onshape allows at most 20).")
+        ] = 20,
         offset: Annotated[int, Field(ge=0, description="Skip this many results (paging).")] = 0,
     ) -> dict[str, Any]:
-        """List or search Onshape documents. Returns each document's ID (needed by every other
-        tool), name and last-modified time. Use `offset` with `next_offset` to page."""
+        """Find Onshape documents: returns each one's document_id (every other tool needs it),
+        name, modified_at and owner, newest first unless `sort_by` says otherwise. Start here when
+        the user names a document: search with `query`, narrow with `scope` (your own, created by
+        you, shared with you, recent, or public). To open one document and see its tabs use
+        `get_document`; to make a new one `create_document`. Read-only. A full page includes a
+        `next_offset`: pass it as `offset` for the next page."""
         data = await app.client.get(
             "/documents",
             {
@@ -106,8 +112,15 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             ),
         ] = False,
     ) -> dict[str, Any]:
-        """Create a new Onshape document in the user's account (private by default). Follow with
-        `create_element` to add a Part Studio (new documents may start empty)."""
+        """Create a new, empty-looking Onshape document in the user's account and return its
+        document_id, workspace_id, name, url and the tabs it already has (Onshape usually adds a
+        'Part Studio 1' and an 'Assembly 1': reuse and `rename` them before adding more with
+        `create_element`). Private by default. Onshape's FREE plan only allows PUBLIC documents:
+        the call then fails with nothing created and a message to ask the user, because a public
+        document is visible to everyone; retry with public=true only after they agree. Use it only
+        when the user wants a new document; to work in an existing one find it with
+        `list_documents`. There is no tool to delete a document, so tell the user a scratch
+        document stays in their account until they delete it in Onshape."""
         try:
             doc = await app.client.post(
                 "/documents", {"name": name, "description": description, "isPublic": public}
@@ -144,8 +157,14 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         ] = "part_studio",
         workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
-        """Add a new Part Studio (where parts are modeled) or Assembly tab to a document and
-        return its element ID."""
+        """Add a new tab to a document and return its element_id, name and kind: a Part Studio
+        (where sketches, extrudes and the other features build parts) or an Assembly (where parts
+        are inserted and mated). Use it when the document has no suitable tab - a new document
+        already has a Part Studio and an Assembly, so check `get_document` first and reuse them
+        instead of piling up empty tabs. Give it a descriptive name (a tab still called 'Part
+        Studio 1' is flagged has_default_name). The new tab is empty: model in it with
+        `create_sketch` / `extrude`, or fill an Assembly with `insert_instance`. It does not
+        create parts, sketches or documents (`create_document` makes those)."""
         wid = await app.workspace(document_id, workspace_id)
         collection = "partstudios" if kind == "part_studio" else "assemblies"
         element = await app.client.post(

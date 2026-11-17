@@ -9,7 +9,7 @@ download one file, open it, paste your Onshape API keys into a form and you are 
 1. **Install `uv` once** (<https://docs.astral.sh/uv/getting-started/installation/>). The extension is
    started with it: `uv` downloads Python and the `onshape-jamcp` package on first start, so you do
    not need to install either yourself.
-2. **Create Onshape API keys** at <https://dev-portal.onshape.com/keys> (tick *Read* and *Write*;
+2. **Create Onshape API keys** at <https://cad.onshape.com/user/developer> (tick *Read* and *Write*;
    *Delete* only if you want `delete_feature`). Copy the secret immediately - Onshape shows it once.
    See [getting started](getting-started.md#2-create-onshape-api-keys) for the details.
 3. **Download the installer:**

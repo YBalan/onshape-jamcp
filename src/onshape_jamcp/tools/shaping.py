@@ -134,9 +134,18 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         verify: Verify = True,
         workspace_id: WorkspaceId = None,
     ) -> dict[str, Any]:
-        """Hollow out a part with walls of the given thickness: remove faces to get an open
-        shell (a box, a cup, an enclosure) or hollow it completely. The reply says what changed;
-        the volume must drop."""
+        """Hollow out a part with walls of the given thickness. Give `remove_face_ids` to leave
+        those faces open (a box without a lid, a cup, an enclosure) or `hollow_part_ids` to hollow a
+        part completely and leave a closed void inside - exactly one of the two. The walls grow
+        inward by default; `opposite_direction` grows them outward from the original surface.
+        Example: a 40 x 30 x 20 mm box (24 000 mm3) shelled to 2 mm walls with the top face removed
+        keeps 7 152 mm3. Use it instead of cutting an inner pocket by hand with `extrude`
+        (operation 'remove'); use `boolean` to combine or subtract whole parts. The face IDs come
+        from `get_body_details`. It appends one `shell` feature and returns its health plus
+        `effect` (parts and total volume before and after) and a warning when nothing changed:
+        Onshape can accept a feature that does nothing, so read it: a wall too thick for the part is
+        accepted as OK and changes nothing (a 50 mm wall on a 40 x 30 x 20 mm box answered OK with
+        the volume unchanged), and only that warning tells you. Remove it with `delete_feature`."""
         body = features.shell_feature(
             name=name or names.shell_name(app.units.length_expression(thickness)),
             thickness=thickness,

@@ -1908,6 +1908,18 @@ class TestInspection:
         assert [m["name"] for m in data["mates"]] == [None, "Fastened 1"]
         assert data["mates"][1]["suppressed"] is True
 
+    async def test_get_assembly_omits_what_onshape_does_not_report(self, make_server, fake):
+        # a whole Part Studio inserted as one instance came back live as just {id, name}
+        fake.asm_instances = [{"id": "I9", "name": "Hub <1>"}]
+        data = (
+            await call(make_server(), "get_assembly", {"document_id": DID, "element_id": AID})
+        ).structured_content
+        assert data["instances"] == [{"instance_id": "I9", "name": "Hub <1>", "suppressed": False}]
+
+    async def test_list_documents_page_size_is_capped_at_what_onshape_allows(self, make_server):
+        result = await call(make_server(), "list_documents", {"limit": 50}, expect_error=True)
+        assert result.is_error  # Onshape answers 400 above 20; the schema refuses it up front
+
     async def test_list_parts_and_featurescript(self, make_server):
         server = make_server()
         parts = (await call(server, "list_parts", BASE)).structured_content

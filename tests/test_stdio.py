@@ -48,7 +48,7 @@ async def test_tool_call_without_credentials_explains_what_to_do():
         result = await client.call_tool("list_documents", {})
     assert result.is_error
     text = " ".join(c.text for c in result.content if isinstance(c, TextContent))
-    assert "ONSHAPE_ACCESS_KEY" in text and "dev-portal.onshape.com" in text
+    assert "ONSHAPE_ACCESS_KEY" in text and "cad.onshape.com/user/developer" in text
 
 
 def test_invalid_configuration_exits_with_a_clear_message():

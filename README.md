@@ -29,7 +29,7 @@ screenshots** (which costs tokens) or not.
 
 ## Quick start
 
-**1. Create API keys** at <https://dev-portal.onshape.com/keys> (tick *Read* and *Write*; *Delete*
+**1. Create API keys** at <https://cad.onshape.com/user/developer> (tick *Read* and *Write*; *Delete*
 only if you want `delete_feature`). Copy the secret immediately - Onshape shows it once.
 
 **2. Add the server to your MCP client.**
