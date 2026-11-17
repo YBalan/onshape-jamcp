@@ -37,7 +37,9 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             Field(description="Which documents to list."),
         ] = "mine",
         sort_by: Annotated[Literal["modified", "created", "name"], Field()] = "modified",
-        limit: Annotated[int, Field(ge=1, le=100, description="Page size.")] = 20,
+        limit: Annotated[
+            int, Field(ge=1, le=20, description="Page size (Onshape allows at most 20).")
+        ] = 20,
         offset: Annotated[int, Field(ge=0, description="Skip this many results (paging).")] = 0,
     ) -> dict[str, Any]:
         """Find Onshape documents: returns each one's document_id (every other tool needs it),

@@ -35,7 +35,7 @@ Find Onshape documents: returns each one's document_id (every other tool needs i
 | `query` | string | no | Case-insensitive text to look for in document names. |
 | `scope` | 'mine' \| 'created' \| 'shared' \| 'recent' \| 'public' | no | Which documents to list. Default: `mine`. |
 | `sort_by` | 'modified' \| 'created' \| 'name' | no | Default: `modified`. |
-| `limit` | integer | no | Page size. Default: `20`. |
+| `limit` | integer | no | Page size (Onshape allows at most 20). Default: `20`. |
 | `offset` | integer | no | Skip this many results (paging). Default: `0`. |
 
 ### `get_document` 🔍
@@ -121,7 +121,7 @@ List the faces (and optionally edges) of each part with their IDs, geometry type
 
 ### `get_assembly` 🔍
 
-Read an Assembly tab: what it contains, where everything sits and what is mated. Call it before changing an assembly (to get the instance IDs `add_mate` needs after `insert_instance`) and after `add_mate` to confirm a part really moved - an accepted mate is not proof. Read-only, one request, nothing is changed. It returns `instances` (instance_id, name, type Part or Assembly, part_id and element_id of the source, suppressed), `placements` (the instance `path`, `fixed`, and `position`: the translation of its origin in the configured length unit - rotation is not reported) and `mates` (feature_id, name, type, suppressed). An empty assembly gives empty lists. For the parts of a Part Studio use `list_parts`; for the tabs of a document use `get_document`; for volume or size use `get_part_properties` on the Part Studio.
+Read an Assembly tab: what it contains, where everything sits and what is mated. Call it before changing an assembly (to get the instance IDs `add_mate` needs after `insert_instance`) and after `add_mate` to confirm a part really moved - an accepted mate is not proof. Read-only, one request, nothing is changed. It returns `instances` (instance_id, name and suppressed; for an inserted single part also type 'Part' and the part_id and element_id of its source - an instance of a whole Part Studio carries only its id and name, so those fields are then absent), `placements` (the instance `path`, `fixed`, and `position`: the translation of its origin in the configured length unit - rotation is not reported) and `mates` (feature_id, name, type, suppressed). An empty assembly gives empty lists. For the parts of a Part Studio use `list_parts`; for the tabs of a document use `get_document`; for volume or size use `get_part_properties` on the Part Studio.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -350,7 +350,7 @@ Mirror parts, features or faces across a plane. Mirroring a part gives a second 
 
 ### `shell` ✏️
 
-Hollow out a part with walls of the given thickness. Give `remove_face_ids` to leave those faces open (a box without a lid, a cup, an enclosure) or `hollow_part_ids` to hollow a part completely and leave a closed void inside - exactly one of the two. The walls grow inward by default; `opposite_direction` grows them outward from the original surface. Example: a 40 x 30 x 20 mm box (24 000 mm3) shelled to 2 mm walls with the top face removed keeps 7 152 mm3. Use it instead of cutting an inner pocket by hand with `extrude` (operation 'remove'); use `boolean` to combine or subtract whole parts. The face IDs come from `get_body_details`. It appends one `shell` feature and returns its health plus `effect` (parts and total volume before and after) and a warning when nothing changed: Onshape can accept a feature that does nothing, so read it. A thickness too large for the part may give ERROR. Remove it with `delete_feature`.
+Hollow out a part with walls of the given thickness. Give `remove_face_ids` to leave those faces open (a box without a lid, a cup, an enclosure) or `hollow_part_ids` to hollow a part completely and leave a closed void inside - exactly one of the two. The walls grow inward by default; `opposite_direction` grows them outward from the original surface. Example: a 40 x 30 x 20 mm box (24 000 mm3) shelled to 2 mm walls with the top face removed keeps 7 152 mm3. Use it instead of cutting an inner pocket by hand with `extrude` (operation 'remove'); use `boolean` to combine or subtract whole parts. The face IDs come from `get_body_details`. It appends one `shell` feature and returns its health plus `effect` (parts and total volume before and after) and a warning when nothing changed: Onshape can accept a feature that does nothing, so read it: a wall too thick for the part is accepted as OK and changes nothing (a 50 mm wall on a 40 x 30 x 20 mm box answered OK with the volume unchanged), and only that warning tells you. Remove it with `delete_feature`.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

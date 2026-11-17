@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **`list_documents` accepted `limit` up to 100, but Onshape allows 20** and answered `400 must be less
+  than or equal to 20`. The schema now stops at 20 (the default), so the assistant is refused before
+  the request and sees the real limit.
+- **`get_assembly` returned `null` for `type`, `part_id` and `element_id`** of an instance made from a
+  whole Part Studio, for which Onshape reports only an id and a name. Absent fields are now left out.
+  (A single inserted part still reports all three.)
+- **`shell`'s description promised an `ERROR` for a wall that is too thick.** Checked live: Onshape
+  accepts it as `OK` and changes nothing; the reply's `effect` and warning are what reveal it, and the
+  description now says so.
+
 ### Changed
 - **Tool descriptions say when to use a tool and what it does**, after Glama's tool-definition review
   rated the one-line ones lowest (`chamfer` C, `fillet` B, `get_assembly` B). `fillet` and `chamfer`

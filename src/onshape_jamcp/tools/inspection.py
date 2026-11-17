@@ -306,12 +306,13 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         before changing an assembly (to get the instance IDs `add_mate` needs after
         `insert_instance`) and after `add_mate` to confirm a part really moved - an accepted mate
         is not proof. Read-only, one request, nothing is changed. It returns `instances`
-        (instance_id, name, type Part or Assembly, part_id and element_id of the source,
-        suppressed), `placements` (the instance `path`, `fixed`, and `position`: the translation of
-        its origin in the configured length unit - rotation is not reported) and `mates`
-        (feature_id, name, type, suppressed). An empty assembly gives empty lists. For the parts of
-        a Part Studio use `list_parts`; for the tabs of a document use `get_document`; for volume
-        or size use `get_part_properties` on the Part Studio."""
+        (instance_id, name and suppressed; for an inserted single part also type 'Part' and the
+        part_id and element_id of its source - an instance of a whole Part Studio carries only its
+        id and name, so those fields are then absent), `placements` (the instance `path`, `fixed`,
+        and `position`: the translation of its origin in the configured length unit - rotation is
+        not reported) and `mates` (feature_id, name, type, suppressed). An empty assembly gives
+        empty lists. For the parts of a Part Studio use `list_parts`; for the tabs of a document
+        use `get_document`; for volume or size use `get_part_properties` on the Part Studio."""
         wid = await app.workspace(document_id, workspace_id)
         units = app.units
         data = await app.client.get(
@@ -330,12 +331,16 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
             "length_unit": units.length_unit,
             "instances": [
                 {
-                    "instance_id": i.get("id"),
-                    "name": i.get("name"),
-                    "type": i.get("type"),
-                    "part_id": i.get("partId"),
-                    "element_id": i.get("elementId"),
-                    "suppressed": bool(i.get("suppressed")),
+                    k: v
+                    for k, v in {
+                        "instance_id": i.get("id"),
+                        "name": i.get("name"),
+                        "type": i.get("type"),
+                        "part_id": i.get("partId"),
+                        "element_id": i.get("elementId"),
+                        "suppressed": bool(i.get("suppressed")),
+                    }.items()
+                    if v is not None  # a whole-Part-Studio instance has only an id and a name
                 }
                 for i in root.get("instances") or []
             ],

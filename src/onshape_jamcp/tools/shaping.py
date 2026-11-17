@@ -143,8 +143,9 @@ def register(mcp: MCPServer, app: App, tool: Registrar) -> None:
         (operation 'remove'); use `boolean` to combine or subtract whole parts. The face IDs come
         from `get_body_details`. It appends one `shell` feature and returns its health plus
         `effect` (parts and total volume before and after) and a warning when nothing changed:
-        Onshape can accept a feature that does nothing, so read it. A thickness too large for the
-        part may give ERROR. Remove it with `delete_feature`."""
+        Onshape can accept a feature that does nothing, so read it: a wall too thick for the part is
+        accepted as OK and changes nothing (a 50 mm wall on a 40 x 30 x 20 mm box answered OK with
+        the volume unchanged), and only that warning tells you. Remove it with `delete_feature`."""
         body = features.shell_feature(
             name=name or names.shell_name(app.units.length_expression(thickness)),
             thickness=thickness,
