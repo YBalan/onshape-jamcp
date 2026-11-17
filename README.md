@@ -1,5 +1,9 @@
 # onshape-jamcp
 
+[![onshape-jamcp MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/YBalan/onshape-jamcp/badges/score.svg)](https://glama.ai/mcp/servers/YBalan/onshape-jamcp)
+
+[![onshape-jamcp MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/YBalan/onshape-jamcp/badges/card.svg)](https://glama.ai/mcp/servers/YBalan/onshape-jamcp)
+
 **J**ust **A**nother **MCP** server for [Onshape](https://www.onshape.com) CAD. It lets an AI
 assistant (Claude, Cursor, VS Code, any [MCP](https://modelcontextprotocol.io) client) find your
 documents, model parts, measure them, look at them and export them - in **millimeters by default**,
